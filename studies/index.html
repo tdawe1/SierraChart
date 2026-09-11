@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sierra Chart — Custom Studies Catalog</title>
+<style>
+:root{--bg:#0f1419;--card:#1a222c;--line:#2b3644;--txt:#dbe4ee;--dim:#8fa1b3;
+--green:#3fb950;--amber:#d29922;--red:#f85149;--blue:#58a6ff;--purple:#bc8cff;--grey:#6e7681}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,sans-serif;margin:0}
+header{padding:28px 24px 8px;max-width:1100px;margin:auto}
+h1{margin:0 0 4px;font-size:26px}header p{color:var(--dim);margin:4px 0}
+#tools{max-width:1100px;margin:12px auto;padding:0 24px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+#q{flex:1;min-width:220px;padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:15px}
+#counts{color:var(--dim);font-size:13px}
+main{max-width:1100px;margin:auto;padding:0 24px 60px}
+h2.group{margin:34px 0 4px;font-size:19px}h2.group small{color:var(--dim);font-weight:400}
+p.gnote{color:var(--dim);font-size:13px;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 15px}
+.card h3{margin:0 0 2px;font-size:16px}.card .fn{font-family:ui-monospace,monospace;font-size:12.5px;color:var(--blue);word-break:break-all}
+.card p.d{margin:8px 0;font-size:14px}.card .scsf{font-family:ui-monospace,monospace;font-size:12px;color:var(--dim);word-break:break-all}
+.badge{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:20px;margin:6px 6px 0 0}
+.Active{background:rgba(63,185,80,.15);color:var(--green);border:1px solid var(--green)}
+.Source-only{background:rgba(88,166,255,.12);color:var(--blue);border:1px solid var(--blue)}
+.Legacy{background:rgba(248,81,73,.12);color:var(--red);border:1px solid var(--red)}
+.Variant{background:rgba(210,153,34,.13);color:var(--amber);border:1px solid var(--amber)}
+.Reference{background:rgba(188,140,255,.12);color:var(--purple);border:1px solid var(--purple)}
+.Helper{background:rgba(110,118,129,.15);color:#aeb9c5;border:1px solid var(--grey)}
+.Binary-only{background:rgba(110,118,129,.15);color:#aeb9c5;border:1px dashed var(--grey)}
+.warn{color:var(--amber);font-size:13px;margin-top:6px}
+footer{max-width:1100px;margin:auto;padding:0 24px 40px;color:var(--dim);font-size:13px}
+a{color:var(--blue)}
+</style>
+</head>
+<body>
+<header>
+<h1>Sierra Chart — Custom Studies Catalog</h1>
+<p>Every custom study in one place. Synced 2026-09-12. Full agent-readable index: <code>STUDIES.md</code>. Vendor origins: <code>studies/SOURCES.md</code>.</p>
+<p>Build: copy the file into <code>ACS_Source</code> → Sierra Chart → Analysis → Build Custom Studies DLL (Remote Build).</p>
+</header>
+<div id="tools">
+<input id="q" type="search" placeholder="Filter — e.g. olympus, vwap, tape, gex, pivot…" autocomplete="off">
+<span id="counts"></span>
+</div>
+<main id="main"></main>
+<footer>⚠ = build conflict: never compile both files into the same DLL. GDI-drawn studies need OpenGL off. Binary-only DLLs have no source in this repo.</footer>
+<script>
+const DATA=[
+{g:"House studies — repo root",n:"tdawe1/SierraChart · flagship + signal studies",items:[
+["TraderOracle.cpp — Olympus","scsf_Olympus","Flagship signal study. Presets in TO Studies.StdyCollct.","Active"],
+["TraderOracle.cpp — Olympus OLD","scsf_OlympusOLD","Previous Olympus generation.","Legacy"],
+["TraderOracle.cpp — Delta Intensity","scsf_Delta_Intensity","Delta intensity panel. ⚠ Same export as Renko_GOAT.cpp — never build both together.","Active"],
+["TraderOracle.cpp — Squeeze / Linda / Waddah / Anti-Setup / DTS","scsf_SierraSqueeze, scsf_LindaMACD, scsf_WaddahExplosion, scsf_Linda_Anti_Setup, scsf_DTS_Scalper","Squeeze Indicator 2 (Tony C.), Linda Raschke MACD, Waddah Explosion, Anti-Setup, DTS Scalper.","Source-only"],
+["Renko_GOAT.cpp","scsf_RabbitWatcher, scsf_RenkoGOAT (+scsf_Delta_Intensity ⚠)","MACD-cross vs EMA hop signals with color bars + Renko companion. ⚠ Delta_Intensity collides with TraderOracle.cpp.","Source-only"],
+["TORobots.cpp — GoldBug","scsf_GoldBug","Auto-trader: direction filter, buy/sell, volume imbalances, engulfing-off-Bollinger, FVG, aggressive mode, max positions/loss/profit. Can send real orders.","Active"],
+["godtrades.cpp — God Trades","scsf_GodTrades","Multi-filter signals: Waddah, MACD, SAR, Supertrend, AO, Fisher, HMA, T3, ADX floor, doji handling, bar-color modes.","Source-only"],
+["VolImbRenko.cpp","scsf_VolImbRenko","Volume-imbalance gap detector (open gaps beyond prior close) + Discord webhook sender.","Source-only"],
+["vumanchu1.cpp","scsf_VuManChuCipherBDivergences","VuManChu Cipher B divergences ACSIL port.","Source-only"],
+["MarketCipherWannabe.cpp","scsf_MarketCipherWannabe","Header claims VuManChu Cipher-B port — name/content mismatch, possible duplicate of vumanchu1.cpp. Verify before use.","Source-only"],
+["mancini.cpp — Mancini Lines","scsf_Mancini_Lines","Support/resistance + major lines, text label, recalc interval.","Source-only"],
+["ManciniPlusConverter.cpp — Mancini Plus","scsf_ManciniPlus","Newer sibling: S/R + majors, ratio scanner input, label, recalc interval.","Source-only"],
+["Killpips.cpp","scsf_Killpips_Levels","Color-coded VIX/VAL/VAH/MAX/MIN horizontals parsed from a “desc: price,…” string.","Active"],
+["MarketMaker.cpp","scsf_MoneyMaker_Levels","L1–L5 / H1–H5 / Mid horizontals parsed from a “desc,price” string.","Source-only"],
+["LRS.cpp — DaveC's LRS","scsf_LinearRegSlopeWithColor","Linear-regression slope histogram + EMA smoothing, threshold colors, background flash on cross.","Active"],
+["StreamSounds.cpp","scsf_StreamSounds","Scheduled session sound alerts (NY open, pivots, auctions…) + file-trigger sounds, on-chart text.","Source-only"],
+["FancyNews.cpp","scsf_FancyNews","Text/news line overlay, configurable news URL (default tradingeconomics calendar).","Source-only"],
+["TraderSmarts_Unofficial.cpp","scsf_TraderSmarts","Stored price-level touch/wick alerts.","Source-only"],
+["SCStringLibrary.cpp","—","Shared SCString helpers. Not a study.","Helper"]]},
+{g:"EdgeFul Indicators/",n:"Session-level toolkit · Central-TZ intraday + daily scanners",items:[
+["DayOfWeekBias.cpp","scsf_DayOfWeekBias","Historical green/red weekday readout, colored by dominant side.","Source-only"],
+["FirstHourTrend.cpp","scsf_FirstHourTrend","NY first-hour trend stats on intraday.","Source-only"],
+["FourLineChartText.cpp","scsf_FourLineChartText","4 pinned text lines, fixed LineNumbers, self-replacing redraws.","Source-only"],
+["InsideBarScanner.cpp","scsf_InsideBarScanner","Scans ≤20 daily charts in the book for the last completed inside bar.","Source-only"],
+["InsideBarScannerBlink.cpp","scsf_InsideBarScanner","⚠ Blinking variant, same export — pick one per build.","Variant"],
+["MidnightLevel.cpp","scsf_MidnightLevel","Midnight-open level on intraday.","Source-only"],
+["OneHourOR_HighLow_First.cpp","scsf_OpeningRangeSequence","Which printed first: the 1H range high or low.","Source-only"],
+["PrevSessionCloseTracker.cpp","scsf_PrevSessionCloseTracker","Prior 5pm futures close tracker.","Source-only"],
+["SundayOpenLevel.cpp","scsf_SundayOpenLevel","17:00 Sunday reopen level.","Source-only"],
+["TimeSlotValue.cpp (+ ES/NQ/YM_FiveMinStats.csv)","scsf_TimeSlotValue","CSV stats table rendered as color-coded rectangles.","Source-only"]]},
+{g:"zbyte/",n:"Ported TradingView / orderflow indicators",items:[
+["TrendArchitect.cpp — v9.3.1","scsf_TrendArchitect","Trend system. Requires Advanced subscription.","Active"],
+["SCOFA-v1206.cpp","scsf_SCOFAbsorptionDetector","Orderflow absorption from VAP, 4 patterns. Current of three versions.","Source-only"],
+["SCOFA-v1205.cpp / v1203.cpp","scsf_SCOFAbsorptionDetector","⚠ Older versions, same export — superseded by v1206.","Legacy"],
+["SqueezeChannel.cpp — v1.1.1","scsf_SqueezeChannel","Pine v6 “Squeeze Channel” port.","Source-only"],
+["TLADe_GEX_Levels.cpp","scsf_TLADe_GEX_Levels","NQ/ES gamma Pine ports merged + BOS + session AVWAP, single study.","Source-only"],
+["EhlersDominantStoch.cpp","scsf_EhlersDominantCycleStochRSI","Ehlers Dominant Cycle Stochastic RSI, 1:1 Pine v6 port.","Source-only"],
+["c-zchann.cpp / g-zchann.cpp","scsf_RollingZScoreChannel","⚠ Two ports, same export — pick one per build.","Variant"]]},
+{g:"studies/vendor/sierrachart-studies/",n:"Orion family · reference copies — canonical: tdawe1/SierraChartStudies",items:[
+["Orion.cpp","scsf_OrionAbsorptionClimax, scsf_OrionAccountBalance","Absorption-climax setups + configurable alerts + data overlay + live (non-reconciled) account balance. Self-contained for Remote Build. (Removed from repo root in 4f3acb0 — edit upstream.)","Reference"],
+["orion_core.h","—","Testable pure-logic mirror of Orion. Not a study.","Helper"],
+["PropRiskOverlay.cpp","scsf_PropRiskOverlay","Live prop guardrails (daily loss cap, drawdown halt) drawn on chart.","Reference"],
+["FlipperStudies.cpp","scsf_TheFlipper, scsf_DeltaColoredCandles, scsf_DynamicFlipper","Flipper signals + delta-colored candles.","Reference"],
+["SatyPivotRibbon.cpp","scsf_SatyPivotRibbon","3-EMA ribbon trend / support-resistance.","Reference"],
+["DiscordAlerts.cpp","scsf_DiscordTradeAlert","Trade webhook alerts to Discord.","Reference"],
+["InitialBalanceStatistics.cpp","scsf_InitialBalanceStatistics","Initial-balance statistics.","Reference"],
+["BacktestExporter.cpp","scsf_BacktestExporter","Bar+signal CSV dump for the headless backtester. Tooling, not a chart study.","Helper"],
+["AllStudies.cpp (not vendored — regenerate via bundle.py)","all studies in one TU","Generated single-DLL bundle of the Studies repo. Stale the moment sources change: regenerate, never archive.","Helper"]]},
+{g:"studies/vendor/frozentundra/",n:"DOM / tape / VP utilities · reference copies — canonical: FrozenTundraTrader/sierrachart · GDI needs OpenGL off",items:[
+["TapeOnChart.cpp","scsf_TapeOnChart","On-chart time & sales tape, large/huge prints, iceberg detection, pinned prints.","Reference"],
+["magic_charts.cpp","scsf_Magic","Tick-execution dot-matrix renderer, bid/ask chars, large-print marks.","Reference"],
+["pace_of_tape.cpp","scsf_PaceOfTape","Ticks/sec or volume/sec gauge, slow→fast gradient.","Reference"],
+["market_depth_sizes.cpp","scsf_MarketDepthSizes","DOM depth size labels with min-size filter. Needs market-depth data.","Reference"],
+["avg_lot_size.cpp","scsf_AverageLotSize","Avg lots per order in DOM GP Column 1. Needs market-depth data.","Reference"],
+["price_in_label.cpp","scsf_PriceInLabel","DOM price in Label/GP column, last-trade highlight.","Reference"],
+["number_highs_lows.cpp","scsf_NumHighsLows","Session high/low counts overlay.","Reference"],
+["google_sheets_importer.cpp","scsf_GoogleSheetsLevelsImporter","Levels from a shared Google Sheet CSV, on chart and/or DOM.","Reference"],
+["JIGSAW_Export.cpp (+ helpers.h)","scsf_JigsawExport","Level export (ovnH/L, VWAPs, deviations, EQs) to CSV for Jigsaw.","Reference"],
+["auto_risk_reward.cpp","scsf_AutoRiskReward","Risk/reward drawing from the open position.","Reference"],
+["auto_bar_period.cpp","scsf_AutoBarPeriod","Source/target bar-period sync across charts.","Reference"],
+["auto_numbars_volmult.cpp","scsf_AutoNumBarsVolMult","Auto NumBars/NumBarsCalc from volume-multiplier studies.","Reference"],
+["auto_vbp_fixes.cpp","scsf_AutoVbP","Auto Volume-by-Price ticks-per-bar per symbol/visible range.","Reference"],
+["vap_mult.cpp","scsf_ChangeVolAtPriceMult","Auto Volume-At-Price multiplier from visible bar ranges.","Reference"],
+["zoom_toggle.cpp","scsf_ZoomToggle","Keyboard zoom toggle (default Space) to N bars.","Reference"]]},
+{g:"studies/vendor/jm-jo-nq100/",n:"French NQ100 toolkit · reference copies — canonical: JM-JO/Sierra-Chart---DLLs",items:[
+["Niveaux_psy_Fut_NQ100_v2.1.cpp","scsf_Niveaux","Psychological levels, vector-drawn, futures.","Reference"],
+["Niveaux_psy_Ind_NQ100_v3.5.cpp","scsf_NiveauxINQ100, scsf_NiveauxINQ100Projetes","Index psych levels on index + projected onto futures.","Reference"],
+["Overlay_INQ100_v2.5.cpp","scsf_OverlayINQ100PlusSpread","Index overlay on futures with spread correction.","Reference"],
+["Points_pivots_Fut_NQ100_v2.3.cpp","scsf_MesPointsPivots* (5)","Futures pivot ladders M/H/J/4H/1H, Full/Mid/Quart.","Reference"],
+["Points_pivots_Ind_NQ100_v6.0.cpp","scsf_MesPointsPivots*, scsf_MesEighths* (8)","Index pivot ladders + eighth/sixteenth splits, projected variants.","Reference"],
+["PH_PB_Dyn_v1.7.5.cpp","6 studies","Dynamic previous-high/low + distances, futures/index/SP500.","Reference"],
+["VWAPs_future_NQ100_v1.7.cpp","scsf_VWAPsCalcul, scsf_VWAPsAffichage","J/H/M VWAP calculation + display pair.","Reference"],
+["SpreadIndex_NQ_v1.7.cpp","scsf_SpreadIndex* (6)","Spread-index calc/display, session averages, price distribution.","Reference"],
+["Spread_Future_Index_NQ_v1.7.cpp","scsf_SpreadFutureIndex* (5)","Future-index spread for subchart display.","Reference"],
+["Suivi_tendance_spread_future_indice_v5.3.cpp","6 studies","Spread trend-follow system + gain display + CSV/param-test scaffolding.","Reference"],
+["Prix_typique_Tour_De_Controle_v5.2.cpp","scsf_PrixTypique +…","Typical price / control tower.","Reference"],
+["Range_TrueRange_v2.5.cpp","8 studies","Range/TR family incl. sigma-scaled variants.","Reference"],
+["Sigma_v5.2.cpp","7 studies","Sigma ladders x512→x0.25 + mini-rebond.","Reference"],
+["Quantieme_mvt_v6.8.cpp","scsf_QuantiemeMvt","Date-fraction move analysis.","Reference"],
+["Latences_v4.8.cpp","6 studies","Data-feed latency + chart-cycle diagnostics.","Reference"],
+["Ligne_verticale_horaire_v2.0.0.cpp","8 studies","Hourly vertical lines/zones + session time packages.","Reference"],
+["Navig_niveaux_v2.3.cpp","scsf_NavigationNiveaux","Level navigation.","Reference"],
+["Padding_et_Boutons_ACS_v2.9.cpp","scsf_Padding_Et_BoutonsACS","Chart padding + ACS buttons.","Reference"],
+["Annul_mini_rebond_v9.3.2.cpp","scsf_AnnulationMiniRebond","Mini-pullback invalidation levels.","Reference"]]},
+{g:"Binary-only DLLs",n:"Committed binaries with no source in this repo — not buildable",items:[
+["ATRPositionSizing_64.dll","?","Source unknown.","Binary-only"],
+["BBDynamicSR_64.dll","?","Source unknown.","Binary-only"],
+["CumulativeDeltaDivDetector_64.dll","?","Source unknown.","Binary-only"],
+["DATR_64.dll","?","Source unknown.","Binary-only"],
+["FVG_and_News_64.dll","?","Source unknown.","Binary-only"],
+["IVRVRatio_64.dll / IVRankPercentile_64.dll","?","Source unknown.","Binary-only"],
+["LinearRegression_64.dll","?","Source unknown.","Binary-only"],
+["MomoVolatility_64.dll","?","Source unknown.","Binary-only"],
+["RankCorrelationIndex_64.dll","?","Source unknown.","Binary-only"],
+["RiskRewardTool_64.dll","?","Source unknown.","Binary-only"],
+["SmashDay_64.dll","?","Source unknown.","Binary-only"],
+["TTMSqueeze_64.dll","?","Source unknown.","Binary-only"],
+["VIXSmartLevels_64.dll","?","Source unknown.","Binary-only"],
+["gcUserStudies_*_64.dll (DOMNotes, FlowGauges, MomentumTails)","?","Source unknown.","Binary-only"],
+["reclaims_64v1.5.1.dll","?","Source unknown.","Binary-only"],
+["ColorThemeSwitcher_64.dll (from Downloads)","?","Source unknown. Two bit-identical copies in Downloads, one kept.","Binary-only"]]}];
+const main=document.getElementById('main'),q=document.getElementById('q'),counts=document.getElementById('counts');
+function render(){
+const f=q.value.trim().toLowerCase();let shown=0,total=0;
+main.innerHTML='';
+DATA.forEach(sec=>{
+const items=sec.items.filter(it=>(it[0]+' '+it[1]+' '+it[2]).toLowerCase().includes(f));
+if(!items.length)return;
+total+=sec.items.length;shown+=items.length;
+const h=document.createElement('h2');h.className='group';h.innerHTML='';h.textContent=sec.g+' ';
+const s=document.createElement('small');s.textContent='— '+sec.n;h.appendChild(s);main.appendChild(h);
+const g=document.createElement('div');g.className='grid';
+items.forEach(it=>{const c=document.createElement('div');c.className='card';
+c.innerHTML='<h3></h3><div class="fn"></div><span class="badge"></span><p class="d"></p><div class="scsf"></div>';
+c.querySelector('h3').textContent=it[0];c.querySelector('.fn').textContent='';
+c.querySelector('.badge').textContent=it[3];c.querySelector('.badge').classList.add(it[3].replace(/[^A-Za-z-]/g,'')||'Helper');
+c.querySelector('.d').textContent=it[2];c.querySelector('.scsf').textContent=it[1];g.appendChild(c);});
+main.appendChild(g);});
+counts.textContent=f?('showing '+shown+' of '+total):(total+' studies · type to filter');}
+q.addEventListener('input',render);render();
+</script>
+</body>
+</html>
