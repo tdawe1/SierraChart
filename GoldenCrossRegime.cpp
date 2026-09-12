@@ -12,16 +12,21 @@ SCDLLName("GoldenCrossRegime")
 //     drawdown but whipsaws — the extension guard and fresh-cross-only
 //     rule are the whipsaw offsets).
 //   Exit (holding, closed bar): death cross (fast crosses below slow).
-// Position Score = 1 - ROC(RocLen): SQ ranks candidates weakest-first;
+// Position Score = 1 - ROC(RocLen)[1] (SQ excludes the entry bar):
 // exposed on a hidden subgraph so multi-symbol ranking can be replicated
 // offline (the single-position backtester cannot rank; it takes the series
-// as given). Signal-only: no order calls.
+// as given). Index leg requires the same bar period and session as this
+// chart (a higher-timeframe index bar can still be forming at our close).
+// Signal-only: no order calls.
 // Assessment recipe (EXACT): Buy->SignalLong, Sell->SignalShort, stops /
-// targets / max_hold OFF, allow_long=true, allow_short=true,
-// reverse_on_opposite=false. With no stop-outs the study and engine
-// positions agree inductively (same entries, death cross the only exit),
-// so no flat-state Sell can open a short. Add stops in a second run to
-// price risk control. Regime: trend.
+// targets / max_hold OFF, allow_long=true, allow_short=true (load-bearing:
+// the engine ignores long exits on Sell when allow_short=false),
+// exit_on_opposite=true, reverse_on_opposite=false, exec_mode pinned
+// (fills differ by execution delay + slippage even as positions agree).
+// With no stop-outs the study and engine positions agree inductively
+// (same entries, death cross the only exit), so no flat-state Sell can
+// open a short. Add stops in a second run to price risk control.
+// Regime: trend.
 namespace
 {
 inline double SMAOver(SCFloatArrayRef Data, int End, int Length)
@@ -60,7 +65,6 @@ SCSFExport scsf_GoldenCrossRegime(SCStudyInterfaceRef sc)
     SCSubgraphRef SgHalt = sc.Subgraph[5];
 
     int& Pos = sc.GetPersistentInt(0);
-    int& EntryBar = sc.GetPersistentInt(1);
 
     if (sc.SetDefaults)
     {
@@ -85,7 +89,7 @@ SCSFExport scsf_GoldenCrossRegime(SCStudyInterfaceRef sc)
         InMaxExtension.SetFloat(1.05f);
         InMaxExtension.SetFloatLimits(1.0f, 2.0f);
 
-        InIndexChart.Name = "Index Chart Number (0 = disabled/halt)";
+        InIndexChart.Name = "Index Chart Number, same bar period+session (0 = disabled/halt)";
         InIndexChart.SetChartNumber(0);
 
         InIndexSlowLen.Name = "Index Slow SMA Bars";
@@ -129,7 +133,6 @@ SCSFExport scsf_GoldenCrossRegime(SCStudyInterfaceRef sc)
         SgHalt.DrawZeros = false;
 
         Pos = 0;
-        EntryBar = -1;
         return;
     }
 
@@ -139,19 +142,24 @@ SCSFExport scsf_GoldenCrossRegime(SCStudyInterfaceRef sc)
     const int i = sc.Index;
     SgBuy[i] = 0.0f;
     SgSell[i] = 0.0f;
+    SgFast[i] = 0.0f;
+    SgSlow[i] = 0.0f;
+    SgScore[i] = 0.0f;
     if (i == 0)
     {
         // Full recalculations replay from bar 0 with stale persistents;
         // restart the state machine so replay matches a fresh compute.
         Pos = 0;
-        EntryBar = -1;
     }
 
     const int fastLen = InFastLen.GetInt();
     const int slowLen = InSlowLen.GetInt();
     const int idxLen = InIndexSlowLen.GetInt();
-    const int need = slowLen > fastLen ? slowLen : fastLen;
-    // Cross detection needs prior-bar SMAs: first computable bar is i == need.
+    // Cross detection needs prior-bar SMAs and the full index window:
+    // first computable bar is i == need.
+    int need = slowLen > fastLen ? slowLen : fastLen;
+    if (idxLen > need)
+        need = idxLen;
     if (i < need)
     {
         SgHalt[i] = 1.0f;
@@ -206,7 +214,8 @@ SCSFExport scsf_GoldenCrossRegime(SCStudyInterfaceRef sc)
     SgSlow[i] = (float)slowCur;
 
     const int rocLen = InRocLen.GetInt();
-    SgScore[i] = (i >= rocLen) ? (float)(1.0 - ROCPctOver(sc.Close, i, rocLen)) : 0.0f;
+    // SQ scores ROC[1] (excludes the entry bar): End=i-1 needs i > rocLen.
+    SgScore[i] = (i > rocLen) ? (float)(1.0 - ROCPctOver(sc.Close, i - 1, rocLen)) : 0.0f;
 
     const bool golden = fastPrev <= slowPrev && fastCur > slowCur;
     const bool death = fastPrev >= slowPrev && fastCur < slowCur;
@@ -216,7 +225,6 @@ SCSFExport scsf_GoldenCrossRegime(SCStudyInterfaceRef sc)
         if (death)
         {
             Pos = 0;
-            EntryBar = -1;
             SgSell[i] = sc.High[i] + sc.TickSize;
             if (sc.IsNewBar(i))
                 sc.AlertWithMessage(202, "GoldenCrossRegime EXIT");
@@ -231,7 +239,6 @@ SCSFExport scsf_GoldenCrossRegime(SCStudyInterfaceRef sc)
     if (golden && (double)sc.Close[i] < maxExt * slowCur)
     {
         Pos = 1;
-        EntryBar = i;
         SgBuy[i] = sc.Low[i] - sc.TickSize;
         if (sc.IsNewBar(i))
             sc.AlertWithMessage(201, "GoldenCrossRegime BUY");
