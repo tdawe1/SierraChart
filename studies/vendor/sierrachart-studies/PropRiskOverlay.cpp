@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 
 SCDLLName("Prop Risk Overlay")
 
@@ -9,19 +10,37 @@ SCDLLName("Prop Risk Overlay")
 // trading. Copy this file into ACS_Source and Remote Build it (self-
 // contained, no extra headers).
 //
-// Reads the account exactly like the broker sees it:
-//   opening equity (account value, or manual override) + daily closed P/L
-//   (Trade Statistics, needs "Maintain Trade Statistics and Trades Data"
-//   enabled on the chart) + open position P/L.
+// Reads the account exactly like the broker sees it, same convention as
+// the Orion balance study: Rithmic available funds lead intraday, with a
+// computed fallback (opening + daily closed P/L + open position P/L, each
+// Sierra P/L leg minus its commission estimate). Needs "Maintain Trade
+// Statistics and Trades Data" enabled on the chart for the daily leg.
 // Draws, top-left:
 //   day P/L vs daily loss limit | trailing room | profit-target progress
 //   size calculator (contracts for your stop at your risk %) + session
 //   gate (TRADE / STANDBY by wall clock on the last bar)
-//   HALT lines when the daily or trailing limit is breached.
+//   HALT line when the daily or trailing limit is breached.
+// Publishes Subgraph[1] "Halt state" (1.0 = halted) for the executor
+// gate, latched for the UTC day: a breach sets it, a new UTC day or a
+// No->Yes cycle of "Reset halt latch" clears it (a still-true breach
+// re-latches immediately). "Flatten all positions now" fires
+// sc.FlattenPositionsAndCancelOrdersForTradeAccount once per No->Yes
+// edge as the manual backup to the native auto-flatten.
 //
 // What it does NOT do: consistency needs multi-day history and lives in
 // the backtester (bt.py reports best-day share PASS/FAIL). This overlay
 // governs today: size, session, daily halt, trailing halt, target.
+// EXECUTOR HALT CONTRACT (v1, one position at a time): no entry call
+// fires unless ALL hold — (1) a study input wired to this study's
+// "Halt state" subgraph reads 0.0 at the last bar via
+// sc.GetStudyArrayUsingID (same wiring pattern Orion uses for its delta
+// arrays; unwired or failed read = halted, fail-closed); (2) flat per
+// sc.GetTradePosition; (3) the order call itself succeeds — failures
+// stand down with AddMessageToLog. There is no ACSIL query for
+// chart auto-trading state (member list has only SetChartTradeMode),
+// so (3) is the native-lock detector: locked/disabled trading fails
+// the order call. Profit target always flattens + locks (native);
+// the executor never manages a runner past target.
 static const int kDrawDay = 202609101;
 static const int kDrawSize = 202609102;
 static const int kDrawHaltDay = 202609103;
@@ -72,7 +91,13 @@ SCSFExport scsf_PropRiskOverlay(SCStudyInterfaceRef sc) {
     SCInputRef InResetPeak = sc.Input[12];
     SCInputRef InShowSize = sc.Input[13];
     SCInputRef InRefreshSec = sc.Input[14];
+    SCInputRef InResetHalt = sc.Input[15];
+    SCInputRef InFlattenNow = sc.Input[16];
+    SCInputRef InRTCommission = sc.Input[17];
+    SCInputRef InClosedRoundTurns = sc.Input[18];
+    SCInputRef InOpeningIncludesDay = sc.Input[19];
     SCSubgraphRef Text = sc.Subgraph[0];
+    SCSubgraphRef Halt = sc.Subgraph[1];
 
     if (sc.SetDefaults) {
         sc.GraphName = "Prop Risk Overlay";
@@ -111,10 +136,24 @@ SCSFExport scsf_PropRiskOverlay(SCStudyInterfaceRef sc) {
         InShowSize.SetYesNo(1);
         InRefreshSec.Name = "Refresh seconds";
         InRefreshSec.SetInt(5);
+        InResetHalt.Name = "Reset halt latch (toggle No->Yes to clear)";
+        InResetHalt.SetYesNo(0);
+        InFlattenNow.Name = "Flatten all positions now (toggle No->Yes)";
+        InFlattenNow.SetYesNo(0);
+        InRTCommission.Name = "Round-turn commission per contract (0 disables)";
+        InRTCommission.SetFloat(0);
+        InRTCommission.SetFloatLimits(0, 1000);
+        InClosedRoundTurns.Name = "Closed round-turn contracts today (commission estimate)";
+        InClosedRoundTurns.SetInt(0);
+        InClosedRoundTurns.SetIntLimits(0, 1000000);
+        InOpeningIncludesDay.Name = "Opening balance already includes today's closed P/L";
+        InOpeningIncludesDay.SetYesNo(0);
 
         Text.Name = "Text (color + font size)";
         Text.PrimaryColor = RGB(229, 231, 235);
         Text.LineWidth = 14;
+        Halt.Name = "Halt state (1=halted, executor gate)";
+        Halt.DrawStyle = DRAWSTYLE_IGNORE;
         Text.DrawStyle = DRAWSTYLE_IGNORE;
         return;
     }
@@ -130,22 +169,35 @@ SCSFExport scsf_PropRiskOverlay(SCStudyInterfaceRef sc) {
     last_update = now_sec;
 
     SCString account = sc.SelectedTradeAccount;
+    n_ACSIL::s_TradeAccountDataFields fields;
+    const int have_fields = sc.GetTradeAccountData(fields, account);
+    const double available = have_fields != 0
+        ? fields.m_AvailableFundsForNewPositions : 0.0;
     double opening = static_cast<double>(InOpening.GetFloat());
-    if (InUseManual.GetYesNo() == 0) {
-        n_ACSIL::s_TradeAccountDataFields fields;
-        if (sc.GetTradeAccountData(fields, account) != 0 && fields.m_AccountValue != 0)
-            opening = fields.m_AccountValue;
-    }
+    if (InUseManual.GetYesNo() == 0 && have_fields != 0 && fields.m_AccountValue != 0)
+        opening = fields.m_AccountValue;
     double daily_closed = 0;
     n_ACSIL::s_TradeStatistics stats;
     if (sc.GetTradeStatisticsForSymbolV2(n_ACSIL::STATS_TYPE_DAILY_ALL_TRADES, stats) != 0)
         daily_closed = stats.ClosedTradesProfitLoss;
     double open_pl = 0;
+    double position_qty = 0;
     s_SCPositionData pos;
-    if (sc.GetTradePosition(pos) == 1)
+    if (sc.GetTradePosition(pos) == 1) {
         open_pl = pos.OpenProfitLoss;
-    const double live = opening + daily_closed + open_pl;
-    const double day_pl = daily_closed + open_pl;
+        position_qty = pos.PositionQuantity;
+    }
+    const double rt_rate = static_cast<double>(InRTCommission.GetFloat());
+    const double day_net = daily_closed
+        - rt_rate * static_cast<double>(InClosedRoundTurns.GetInt());
+    const double pos_net = open_pl - rt_rate * fabs(position_qty) / 2.0;
+    double opening_base = opening;
+    if (InOpeningIncludesDay.GetYesNo() != 0)
+        opening_base = opening - daily_closed;
+    const double live = (available != 0.0)
+        ? available : opening_base + day_net + pos_net;
+    const double day_pl = (available != 0.0)
+        ? live - opening_base : day_net + pos_net;
 
     if (InResetPeak.GetYesNo() != 0 || peak == 0 || live > peak)
         peak = static_cast<float>(live);
@@ -155,6 +207,29 @@ SCSFExport scsf_PropRiskOverlay(SCStudyInterfaceRef sc) {
     const double target = InTarget.GetFloat();
     const bool halt_day = daily_limit > 0 && day_pl <= -daily_limit;
     const bool halt_trail = trail_limit > 0 && (peak - live) >= trail_limit;
+    // Halt latch: a breach holds for the UTC day. A new UTC day or a
+    // No->Yes cycle of "Reset halt latch" clears it, but a still-true
+    // breach re-latches immediately (fail-closed).
+    const int today_utc = sc.CurrentSystemDateTime.GetDate();
+    int& halt_date = sc.GetPersistentInt(1);
+    int& last_reset = sc.GetPersistentInt(2);
+    int& last_flatten = sc.GetPersistentInt(3);
+    if (halt_date != 0 && halt_date != today_utc)
+        halt_date = 0;
+    const int reset_now = InResetHalt.GetYesNo();
+    if (reset_now != 0 && last_reset == 0)
+        halt_date = 0;
+    last_reset = reset_now;
+    if (halt_day || halt_trail)
+        halt_date = today_utc;
+    const bool halted = halt_date != 0;
+    Halt[sc.Index] = halted ? 1.0f : 0.0f;
+
+    // Manual backup to the native auto-flatten: once per No->Yes edge.
+    const int flat_now = InFlattenNow.GetYesNo();
+    if (flat_now != 0 && last_flatten == 0)
+        sc.FlattenPositionsAndCancelOrdersForTradeAccount(account);
+    last_flatten = flat_now;
 
     SCString dt = sc.DateTimeToString(sc.BaseDateTimeIn[sc.ArraySize - 1], FLAG_DT_COMPLETE_DATETIME);
     int hh = -1;
@@ -223,18 +298,17 @@ SCSFExport scsf_PropRiskOverlay(SCStudyInterfaceRef sc) {
     } else {
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, kDrawSize);
     }
-    if (halt_day) {
+    if (halted) {
         SCString halt;
-        halt.Format("HALT - daily limit (%.0f)", day_pl);
+        if (halt_day)
+            halt.Format("HALT - daily limit (%.0f)", day_pl);
+        else if (halt_trail)
+            halt.Format("HALT - trailing (peak %.0f live %.0f)", (double)peak, live);
+        else
+            halt.Format("HALT - latched (%.0f)", day_pl);
         draw(kDrawHaltDay, 30, halt, red);
     } else {
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, kDrawHaltDay);
-    }
-    if (halt_trail) {
-        SCString halt;
-        halt.Format("HALT - trailing (peak %.0f live %.0f)", (double)peak, live);
-        draw(kDrawHaltTrail, 36, halt, red);
-    } else {
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, kDrawHaltTrail);
     }
 }

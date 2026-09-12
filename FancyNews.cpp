@@ -4,24 +4,25 @@ SCDLLName("Fancy News DLL")
 
 SCString ReadTextFile(SCStudyInterfaceRef sc, SCString FileLocation) {
     char TextBuffer[1000] = {};
-    int FileHandle = 1;
-    unsigned int *p_BytesRead = new unsigned int(0);
-    sc.OpenFile(FileLocation.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING, FileHandle);
-    sc.ReadFile(FileHandle, TextBuffer, 1000, p_BytesRead);
+    int FileHandle = 0;
+    unsigned int BytesRead = 0;
+    if (sc.OpenFile(FileLocation.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING, FileHandle) == 0)
+        return "";
+    sc.ReadFile(FileHandle, TextBuffer, sizeof(TextBuffer) - 1, &BytesRead);
     sc.CloseFile(FileHandle);
+    TextBuffer[sizeof(TextBuffer) - 1] = '\0';
     return TextBuffer;
 }
 
 SCSFExport scsf_FancyNews(SCStudyInterfaceRef sc) {
     std::vector<SCString> sLines;
     int i = sc.Index;
-    int prevBar = 0;
-    SCInputRef Input_FileName = sc.Input[0];
+    if (i < 1)
+        return;
     SCString txt = "";
     SCSubgraphRef Subgraph_Storage = sc.Subgraph[0];
     SCFloatArrayRef StorageArray = Subgraph_Storage.Arrays[0];
     SCInputRef Input_DrawLabels = sc.Input[0];
-    SCInputRef Input_URL = sc.Input[1];
     SCInputRef News_URL = sc.Input[2];
 
     if (sc.SetDefaults) {
@@ -69,10 +70,9 @@ SCSFExport scsf_FancyNews(SCStudyInterfaceRef sc) {
         SCDateTime TenMin = CurrentTime + SCDateTime::MINUTES(10);
         SCString sAMPM = "AM";
         int iHr = TwoMin.GetHour();
-        if (iHr >= 12) {
-            iHr -= 12;
-            sAMPM = "PM";
-        }
+        if (iHr == 0) { iHr = 12; }
+        else if (iHr > 12) { iHr -= 12; sAMPM = "PM"; }
+        else if (iHr == 12) { sAMPM = "PM"; }
 
         TwoMinAhead.Format("%d:%02d %s", iHr, TwoMin.GetMinute(), sAMPM.GetChars());
 

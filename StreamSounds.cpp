@@ -430,7 +430,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
         }
 
         int trigHandle2 = 0;
-        SCString trig2 = Input_Trigger1.GetString();
+        SCString trig2 = Input_Trigger2.GetString();
         int OpenResult2 = sc.OpenFile(trig2.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING,
                                       trigHandle2);
         if (OpenResult2 != 0) {
@@ -442,7 +442,7 @@ SCSFExport scsf_StreamSounds(SCStudyInterfaceRef sc) {
         }
 
         int trigHandle3 = 0;
-        SCString trig3 = Input_Trigger1.GetString();
+        SCString trig3 = Input_Trigger3.GetString();
         int OpenResult3 = sc.OpenFile(trig3.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING,
                                       trigHandle3);
         if (OpenResult3 != 0) {

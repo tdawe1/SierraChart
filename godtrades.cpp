@@ -41,7 +41,7 @@ bool IsRed(SCBaseDataRef InData, int index) {
 }
 
 bool IsNearEqual(double value1, double value2, SCBaseDataRef InData, int index, double percent) {
-    return abs(value1 - value2) < (3 * percent); // PercentOfCandleLength(InData, index, percent);
+    return fabs(value1 - value2) < PercentOfCandleLength(InData, index, percent);
 }
 
 bool IsUpperWickSmall(SCBaseDataRef InData, int index, double percent) {
@@ -122,7 +122,7 @@ inline bool IsBodyStrong(SCBaseDataRef InData, int index) {
 bool IsTweezerTop(SCStudyInterfaceRef sc, int index, float UpperBand) {
     SCBaseDataRef InData = sc.BaseData;
     bool ret_flag = false;
-    if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize) && InData[
+    if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, 10.0 /* percent of candle length; ~matches old 3-tick tolerance on typical ES candles */) && InData[
             SC_LOW][index] < InData[SC_LOW][index - 1] // current bar lower than previous
         && IsRed(InData, index) && IsRed(InData, index - 1) && IsGreen(InData, index - 2) && IsGreen(InData, index - 3)
         && (InData[SC_HIGH][index - 1] > UpperBand || InData[SC_HIGH][index - 2] > UpperBand))
@@ -135,7 +135,7 @@ bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand) {
     SCBaseDataRef InData = sc.BaseData;
     bool ret_flag = false;
 
-    if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize) && InData[
+    if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, 10.0 /* percent of candle length; ~matches old 3-tick tolerance on typical ES candles */) && InData[
             SC_HIGH][index] > InData[SC_HIGH][index - 1] && IsGreen(InData, index) && IsGreen(InData, index - 1) &&
         IsRed(InData, index - 2) && IsRed(InData, index - 3) && (
             InData[SC_LOW][index - 1] < LowerBand || InData[SC_LOW][index - 2] < LowerBand))
@@ -192,14 +192,14 @@ bool IsDoji(SCBaseDataRef InData, int index) {
     bool ret_flag = false;
 
     if (IsRed(InData, index)) {
-        if (abs(InData[SC_HIGH][index] - InData[SC_OPEN][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index])
+        if (fabs(InData[SC_HIGH][index] - InData[SC_OPEN][index]) > fabs(InData[SC_OPEN][index] - InData[SC_LAST][index])
             &&
-            abs(InData[SC_LAST][index] - InData[SC_LOW][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
+            fabs(InData[SC_LAST][index] - InData[SC_LOW][index]) > fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
             ret_flag = true;
     } else if (IsGreen(InData, index)) {
-        if (abs(InData[SC_HIGH][index] - InData[SC_LAST][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index])
+        if (fabs(InData[SC_HIGH][index] - InData[SC_LAST][index]) > fabs(InData[SC_OPEN][index] - InData[SC_LAST][index])
             &&
-            abs(InData[SC_OPEN][index] - InData[SC_LOW][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
+            fabs(InData[SC_OPEN][index] - InData[SC_LOW][index]) > fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
             ret_flag = true;
     }
 
@@ -610,6 +610,8 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     }
 
     const int i = sc.Index;
+    if (i < 2)
+        return;
     auto &r_SqueezeUp{sc.GetPersistentInt(0)};
     auto cl{sc.GetBarHasClosedStatus(i)}; // BHCS_BAR_HAS_NOT_CLOSED
     SCBaseDataRef in = sc.BaseData;
@@ -621,22 +623,22 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
     auto popen{sc.Open[i - 1]};
     auto phigh{sc.High[i - 1]};
     auto plow{sc.Low[i - 1]};
-    auto body{abs(open - close)};
-    auto pbody{abs(popen - pclose)};
+    auto body{fabs(open - close)};
+    auto pbody{fabs(popen - pclose)};
     bool red = open > close;
     bool green = open < close;
     bool pdoji = false;
     auto upperwick{0};
     auto lowerwick{0};
     if (green) {
-        upperwick = abs(high - close);
-        lowerwick = abs(open - low);
-        pdoji = abs(phigh - pclose) > pbody && abs(popen - plow) > body;
+        upperwick = fabs(high - close);
+        lowerwick = fabs(open - low);
+        pdoji = fabs(phigh - pclose) > pbody && fabs(popen - plow) > body;
     } else // red
     {
-        upperwick = abs(high - open);
-        lowerwick = abs(close - low);
-        pdoji = abs(phigh - popen) > pbody && abs(pclose - plow) > body;
+        upperwick = fabs(high - open);
+        lowerwick = fabs(close - low);
+        pdoji = fabs(phigh - popen) > pbody && fabs(pclose - plow) > body;
     }
     bool doji = upperwick > body && lowerwick > body;
     SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
@@ -910,14 +912,14 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         int iRedGreenColor = 255;
         if (Input_BarColor.GetIndex() == 1) // waddah explosion
         {
-            iRedGreenColor = min(255, abs(t1) + Input_BarColorWaddah.GetInt());
+            iRedGreenColor = min(255, fabs(t1) + Input_BarColorWaddah.GetInt());
             if (t1 > 0)
                 Subgraph_ColorBar.DataColor[i] = RGB(0, iRedGreenColor, 0);
             else
                 Subgraph_ColorBar.DataColor[i] = RGB(iRedGreenColor, 0, 0);
         } else if (Input_BarColor.GetIndex() == 2) // linda macd
         {
-            iRedGreenColor = min(255, abs(t1) + Input_BarColorLinda.GetInt());
+            iRedGreenColor = min(255, fabs(t1) + Input_BarColorLinda.GetInt());
             if (linda > 0)
                 Subgraph_ColorBar.DataColor[i] = RGB(0, iRedGreenColor, 0);
             else
@@ -978,10 +980,10 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
 #pragma endregion
 
         // VolImb need to be BEFORE the current bar check, or they don't re-draw after an INS key update
-        if (IsVolImbGreen(sc, sc.CurrentIndex))
+        if (IsVolImbGreen(sc, i))
             sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
 
-        if (IsVolImbRed(sc, sc.CurrentIndex))
+        if (IsVolImbRed(sc, i))
             sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
 
         if (!bIsCurrentBar)
@@ -1060,7 +1062,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         Subgraph_VolImbDirection[i] = 0;
         Subgraph_VolImbPrice[i] = 0;
 
-        if (IsVolImbGreen(sc, sc.CurrentIndex)) {
+        if (IsVolImbGreen(sc, i)) {
             //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
             Subgraph_VolImbUp[i] = low - ((Input_UpOffset.GetInt()) * sc.TickSize);
             Subgraph_VolImbOriginCandle[i] = sc.CurrentIndex;
@@ -1085,7 +1087,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
             }
         }
 
-        if (IsVolImbRed(sc, sc.CurrentIndex)) {
+        if (IsVolImbRed(sc, i)) {
             //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
             Subgraph_VolImbDown[i] = high + ((Input_UpOffset.GetInt()) * sc.TickSize);
             Subgraph_VolImbOriginCandle[i] = sc.CurrentIndex;

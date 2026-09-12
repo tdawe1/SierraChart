@@ -6,7 +6,11 @@ External sources are reference copies under `studies/vendor/` (see
 `studies/SOURCES.md` for origins and sync policy). Human-browsable catalog:
 `studies/index.html`.
 
-Build: copy the file(s) into `ACS_Source` and Remote Build.
+Build: `python3 tools/sc.py build dll && python3 tools/sc.py build verify`
+for local MinGW `_64.dll`s straight into `Data/` (restart Sierra after —
+it scans `Data/` once at startup), or copy the file(s) into `ACS_Source`
+and Remote Build (`build stage` flattens sources+headers for a one-trip
+server build; see Agent build notes).
 Unless noted, each file is a standalone translation unit.
 Known build conflicts are flagged with ⚠ below — do not compile both
 files into the same DLL/in the same build folder selection.
@@ -33,20 +37,23 @@ Status values: **Active** (built `_64.dll` committed in this repo) ·
 | `Renko_GOAT.cpp` | `RabbitWatcher` / Rabbit Watcher | MACD-cross vs EMA hop signals, color bars | Source-only |
 | `Renko_GOAT.cpp` | `RenkoGOAT` / Renko GOAT | Renko companion signals | Source-only |
 | `Renko_GOAT.cpp` | `Delta_Intensity` / Delta Intensity | ⚠ duplicate export — see `TraderOracle.cpp` | Source-only |
-| `TORobots.cpp` | `GoldBug` / GoldBug | Auto-trader: direction filter, buy/sell, imbalance, engulfing-off-BB, FVG, aggressive mode, max positions/loss/profit; can send real orders | Active (`TORobots_64.dll`) |
+| `TORobots.cpp` | `GoldBug` / GoldBug | Auto-trader: direction filter, buy/sell, imbalance, engulfing-off-BB, FVG, max positions/loss/profit; order sending defaults OFF, max-loss/profit halt enforced (safety pass 2026-09-12) | Active (`TORobots_64.dll`) |
 | `godtrades.cpp` | `GodTrades` / God Trades | Multi-filter signals: Waddah, MACD, SAR, Supertrend, AO, Fisher, HMA, T3, ADX floor, doji handling, bar-color modes | Source-only |
-| `VolImbRenko.cpp` | `VolImbRenko` / VolImb RENKO | Volume-imbalance gap detector (open gaps beyond prior close) + Discord webhook sender | Source-only |
-| `MarketCipherWannabe.cpp` | `MarketCipherWannabe` | Header says VuManChu Cipher-B divergences port — name/content mismatch, possible duplicate of `vumanchu1.cpp`; verify before use | Source-only |
-| `vumanchu1.cpp` | `VuManChuCipherBDivergences` / VMC Cipher_B_Divergences | VuManChu Cipher B divergences ACSIL port | Source-only |
+| `VolImbRenko.cpp` | `VolImbRenko` / VolImb RENKO | Volume-imbalance gap detector (open gaps beyond prior close) + optional Discord webhook (empty URL = disabled); future-bar lookahead removed 2026-09-12 | Source-only |
+| `MarketCipherWannabe.cpp` | `MarketCipherWannabe` | Extended edition of the VMC Cipher B divergences: same core + per-category alerts (small/big/div/gold/MFI, once-per-bar latches, bar-close option) mirrored to hidden flag subgraphs | Source-only |
+| `vumanchu1.cpp` | `VuManChuCipherBDivergences` / VMC Cipher_B_Divergences | Base edition: VuManChu Cipher B divergences port, minimal Buy/Sell/Gold alerts | Source-only |
 | `mancini.cpp` | `Mancini_Lines` / Mancini Lines | Support/resistance + major lines, text label, recalc interval | Source-only |
 | `ManciniPlusConverter.cpp` | `ManciniPlus` / Mancini Plus | Newer sibling: S/R + majors, ratio scanner input, label, recalc interval | Source-only |
 | `Killpips.cpp` | `Killpips_Levels` / Killpips Levels v1.4 | Color-coded horizontals (VIX/VAL/VAH/MAX/MIN) parsed from a `desc: price,…` string | Active (`Killpips_64.dll`) |
-| `MarketMaker.cpp` | `MoneyMaker_Levels` / Market Maker Levels | L1–L5/H1–H5/Mid horizontals parsed from a `desc,price` string | Source-only |
+| `MarketMaker.cpp` | `MoneyMaker_Levels` / Market Maker Levels | L1–L5/H1–H5/Mid horizontals parsed from a `desc,price` string; per-day drawing namespaces (multi-day clobber fixed 2026-09-12) | Source-only |
 | `LRS.cpp` | `LinearRegSlopeWithColor` / DaveC's LRS | Linear-regression slope histogram + EMA smoothing, threshold colors, background flash on cross | Active (`LRS_64.dll`) |
 | `StreamSounds.cpp` | `StreamSounds` / Stream Sounds | Scheduled session sound alerts (NY open, pivots, auctions…) + file-trigger sounds, on-chart text | Source-only |
-| `FancyNews.cpp` | `FancyNews` / Fancy News | Text/news line overlay, configurable news URL (default tradingeconomics calendar); uses alert slots 26/27 | Source-only |
+| `FancyNews.cpp` | `FancyNews` / Fancy News | File-driven news-line overlay (`C:\temp\today.txt`); uses alert 29 | Source-only |
 | `TraderSmarts_Unofficial.cpp` | `TraderSmarts` / TraderSmarts Unofficial | Stored price-level touch/wick alerts (alerts 26/27) | Source-only |
-| `SCStringLibrary.cpp` | — | Shared `SCString` helpers, no study | Helper/Test |
+| `MeanReversionOU.cpp` | `MeanReversionOU` / Mean Reversion OU | OU/z-score mean reversion with half-life time-stop and stdev-floor gates. Signal-only. | Source-only |
+| `StatArbPairs.cpp` | `StatArbPairs` / Stat Arb Pairs | Pairs spread mean reversion: rolling OLS hedge, z-scored spread, correlation + half-life gates. Signal-only. | Source-only |
+| `GoldenCrossRegime.cpp` | `GoldenCrossRegime` / Golden Cross Regime | Long-only SMA golden-cross with extension guard and index bull-regime filter, death-cross exits, 1-ROC score. Signal-only. | Source-only |
+| `MondayDipBuy.cpp` | `MondayDipBuy` / Monday Dip Buy | Long-only Monday dip-buy above rising slow SMA, bounce-or-time exits, 1-ROC score. Signal-only. | Source-only |
 
 ## 2. `EdgeFul Indicators/` — session-level toolkit (all source-only, no DLLs)
 
@@ -164,7 +171,47 @@ surfaces, add it to the tables above and flip the status.
 `SC Chartbook E-MINI … SierraEdge.Cht` (×2 + backups),
 `FrozenTundra_Footprint_*.cht` + `frozen tundra footprint.Cht`.
 
-## Agent build notes
+## Alert ID registry (chart-global — never reuse an ID across studies)
+|`check` flags any ID shared by two files. Within `TraderOracle.cpp` the two
+Olympus generations also use distinct IDs. IDs 197–200 (freed by the
+2026-09-12 renumbering) are now owned by `MeanReversionOU.cpp` /
+`StatArbPairs.cpp`; 201–204 by `GoldenCrossRegime.cpp` / `MondayDipBuy.cpp`.
+| ID(s) | Owner | Signal |
+|---|---|---|
+| 5–8, 12–13, 17–24 | `godtrades.cpp` | God Trades signals (5/6 = BUY/SELL, 7/8 on NQ symbols) |
+| 26, 27 | `TraderSmarts_Unofficial.cpp` | Stored-level touch / wick |
+| 29 | `FancyNews.cpp` | 2-minute news warning |
+| 161–169 | `zbyte/SqueezeChannel.cpp` | Squeeze breakouts/reversals (moved off 1–9, which hit GodTrades) |
+| 171–176 | `zbyte/c-zchann.cpp` + `g-zchann.cpp` | Channel break/re-entry/basis-cross (pick-one pair shares; moved off 1–6, which hit GodTrades) |
+| 181, 182 | `VolImbRenko.cpp` | Volume Imbalance BUY / SELL |
+| 183, 184 | `TraderOracle.cpp` Olympus | BUY / SELL |
+| 185, 186 | `TraderOracle.cpp` Olympus VolImb legs | BUY / SELL |
+| 187, 188 | `TraderOracle.cpp` Olympus OLD | BUY / SELL |
+| 189, 190 | `TraderOracle.cpp` Olympus OLD VolImb legs | BUY / SELL |
+| 193, 194 | `Renko_GOAT.cpp` | Renko GOAT BUY / SELL |
+| 195, 196 | `TORobots.cpp` GoldBug | Standard BUY / SELL |
+| 197, 198 | `MeanReversionOU.cpp` | Mean-reversion BUY / SELL |
+| 199, 200 | `StatArbPairs.cpp` | Spread BUY / SELL |
+| 201, 202 | `GoldenCrossRegime.cpp` | Golden-cross BUY / death-cross EXIT |
+| 203, 204 | `MondayDipBuy.cpp` | Dip-buy BUY / bounce-or-time EXIT |
+
+- Tooling: `tools/sc.py`
+  (`new`/`catalog`/`install`/`check`/`sync`/`data`/`strategies`/`optimize`/`backtest`/`build`)
+  + `tools/README.md`. Run `python3 tools/sc.py check` before any Remote Build;
+  deploy with `install`, backtests delegate to the upstream engine
+  (`~/SierraChartStudies/backtest/`), never a local copy.
+- Compiling (two methods — local first, server when you must):
+  `build plan` (dep closure, fails on missing headers) →
+  `build local` (MinGW syntax check, seconds) →
+  `build dll [--to DIR] [--force]` (links UCRT, drops `*_64.dll` into
+  `Data/`, no server round-trip; restart Sierra, it scans `Data/` once
+  at startup) → `build verify` (each DLL fresh and exporting its
+  `scsf_` names). Prefer this loop for iteration.
+  Remote Build path instead: `build stage [--dry-run]` flattens sources +
+  companion headers (`zbyte/include/`, `zbyte/modules/`) into `ACS_Source`
+  so quoted includes resolve on the server too, then Analysis → Build
+  Custom Studies DLL selecting every staged `.cpp` in ONE build (one
+  trip, one `_64.dll` per study). `install` uses the same layout.
 
 - Remote Build compiles the selected `ACS_Source` file(s) into one DLL per
   build; study names on-chart come from `sc.GraphName`, not filenames.
@@ -176,7 +223,8 @@ surfaces, add it to the tables above and flip the status.
   `SCStudyInterfaceRef` (not `SCStudyGraphRef`), `DRAWSTYLE_COLOR_BAR`
   (not `DRAWSTYLE_COLORBAR`) — verify names against Sierra docs before
   touching source.
-- No `sierrachart.h` locally: syntax-check via stub at
-  `/tmp/orion_check/sierrachart.h`.
+- Syntax check with `build local` (uses the real `sierrachart.h` from
+  `$SC_ACS_SOURCE` / Wine `ACS_Source`); the `/tmp/orion_check` stub is
+  fallback only, and must be refreshed when new ACSIL APIs are used.
 - `*_64.dll` are committed build artifacts in this repo (kept deliberately for
   one-click install); never commit new ones without need.

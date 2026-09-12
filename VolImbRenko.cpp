@@ -34,10 +34,40 @@ bool IsVolImbRed(SCStudyInterfaceRef sc, int index)
     return ret_flag;
 }
 
+static std::string EscapeDiscordJson(const std::string &In)
+{
+    std::string Out;
+    Out.reserve(In.size() + 2);
+    for (size_t i = 0; i < In.size(); ++i)
+    {
+        const unsigned char c = static_cast<unsigned char>(In[i]);
+        switch (c)
+        {
+            case '"':  Out += "\\\""; break;
+            case '\\': Out += "\\\\"; break;
+            case '\n': Out += "\\n"; break;
+            case '\r': Out += "\\r"; break;
+            case '\t': Out += "\\t"; break;
+            default:
+                if (c < 0x20)
+                {
+                    static const char *Hex = "0123456789abcdef";
+                    Out += "\\u00";
+                    Out += Hex[(c >> 4) & 0xF];
+                    Out += Hex[c & 0xF];
+                }
+                else
+                    Out += In[i];
+                break;
+        }
+    }
+    return Out;
+}
+
 void SendDiscordWebhook(SCStudyInterfaceRef sc, const std::string &webhookUrl, const std::string &message)
 {
     std::stringstream jsonPayload;
-    jsonPayload << "{\"content\":\"" << message << "\"}";
+    jsonPayload << "{\"content\":\"" << EscapeDiscordJson(message) << "\"}";
 
     n_ACSIL::s_HTTPHeader HTTPHeader;
     HTTPHeader.Name = "Content-Type";
@@ -51,11 +81,20 @@ void SendDiscordWebhook(SCStudyInterfaceRef sc, const std::string &webhookUrl, c
     );
 }
 
+static void MaybeSendWebhook(SCStudyInterfaceRef sc, const SCString& Url, const SCString& Text)
+{
+    if (Url.GetLength() <= 0)
+        return;
+    SCString Msg;
+    Msg.Format("%s %s", sc.GetChartSymbol(sc.ChartNumber).GetChars(), Text.GetChars());
+    SendDiscordWebhook(sc, std::string(Url.GetChars()), std::string(Msg.GetChars()));
+}
+
 SCSFExport scsf_VolImbRenko(SCStudyInterfaceRef sc)
 {
     SCString txt;
 
-    SCInputRef Input_BarColor = sc.Input[11];
+    SCInputRef Input_WebhookURL = sc.Input[0];
     SCInputRef Input_BarColorWaddah = sc.Input[12];
     SCInputRef Input_BarColorLinda = sc.Input[13];
 
@@ -105,7 +144,11 @@ SCSFExport scsf_VolImbRenko(SCStudyInterfaceRef sc)
         Subgraph_VolImbDown.PrimaryColor = RGB(255, 255, 255);
         Subgraph_VolImbDown.DrawStyle = DRAWSTYLE_POINT;
         Subgraph_VolImbDown.LineWidth = 1;
-        Subgraph_VolImbUp.DrawZeros = false;
+        Subgraph_VolImbDown.DrawZeros = false;
+
+        Input_WebhookURL.Name = "Discord Webhook URL";
+        Input_WebhookURL.SetString("");
+        Input_WebhookURL.SetDescription("Empty = disabled. Paste a webhook URL to send BUY/SELL alerts (stored in chartbook - keep chartbooks private).");
 
         return;
     }
@@ -113,6 +156,8 @@ SCSFExport scsf_VolImbRenko(SCStudyInterfaceRef sc)
 #pragma endregion
 
     int i = sc.Index;
+    if (i < 2)
+        return;
     int BarCloseStatus = sc.GetBarHasClosedStatus() == BHCS_BAR_HAS_CLOSED;
     SCBaseDataRef in = sc.BaseData;
     double close = sc.Close[i];
@@ -123,8 +168,8 @@ SCSFExport scsf_VolImbRenko(SCStudyInterfaceRef sc)
     double popen = sc.Open[i - 1];
     double phigh = sc.High[i - 1];
     double plow = sc.Low[i - 1];
-    double body = abs(open - close);
-    double pbody = abs(popen - pclose);
+    double body = fabs(open - close);
+    double pbody = fabs(popen - pclose);
     bool red = open > close;
     bool green = open < close;
     bool pdoji = false;
@@ -133,121 +178,31 @@ SCSFExport scsf_VolImbRenko(SCStudyInterfaceRef sc)
 
     SCFloatArrayRef Array_Value = Subgraph_Calc.Arrays[0];
 
-    /*
-        if (sc.GetBarHasClosedStatus() == BHCS_BAR_HAS_CLOSED)
-        {
-            const int32_t numLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID) - 1;
-            if (numLines != 0)
-            {
-                for (int32_t lineIndex = numLines; lineIndex >= 0; --lineIndex)
-                {
-                    int32_t lineID{0};
-                    int32_t startIndex{0};
-                    int32_t endIndex{0};
-                    float lineValue{0.0f};
-
-                    if (sc.GetStudyLineUntilFutureIntersectionByIndex(sc.ChartNumber, sc.StudyGraphInstanceID, lineIndex, lineID, startIndex, lineValue, endIndex) != 0)
-                    if (sc.GetStudyLineUntilFutureIntersectionByIndex(sc.ChartNumber
-                                                                      ,
-                                                                      sc.StudyGraphInstanceID
-                                                                      ,
-                                                                      lineIndex
-                                                                      ,
-                                                                      lineID
-                                                                      ,
-                                                                      startIndex
-                                                                      ,
-                                                                      lineValue
-                                                                      ,
-                                                                      endIndex))
-                    {
-                        if (endIndex - startIndex < 3)
-                            sc.DeleteLineUntilFutureIntersection(startIndex, lineID);
-                    }
-                }
-            }
-        }
-
-        if (BarCloseStatus)
-        {
-            int iEndings = 0;
-            const int32_t numLines = sc.GetNumLinesUntilFutureIntersection(sc.ChartNumber, sc.StudyGraphInstanceID) - 1;
-            if (numLines != 0)
-            {
-                for (int32_t lineIndex = numLines; lineIndex >= 0; --lineIndex)
-                {
-                    int32_t lineID{0};
-                    int32_t startIndex{0};
-                    int32_t endIndex{0};
-                    float lineValue{0.0f};
-
-                    if (sc.GetStudyLineUntilFutureIntersectionByIndex(sc.ChartNumber, sc.StudyGraphInstanceID, lineIndex, lineID, startIndex, lineValue, endIndex) != 0)
-                    {
-                        if (endIndex - startIndex < 3)
-                        {
-                            SCString txt;
-                            txt.Format("endIndex %d, start %d, lineID %d lineValue %d", endIndex, startIndex, lineID, lineValue);
-                            sc.AddMessageToLog(txt, 0);
-
-                            iEndings++;
-                            // DrawText(sc, Subgraph_3oU, "shit", 0, 5);
-                            sc.DeleteLineUntilFutureIntersection(startIndex, lineID);
-                            Subgraph_Intersection[i] = endIndex;
-                        }
-                    }
-                }
-            }
-            Subgraph_Intersection[i] = iEndings;
-        }
-    */
     Subgraph_VolImbUp[i] = 0;
     Subgraph_VolImbDown[i] = 0;
+    const SCString WebhookURL = Input_WebhookURL.GetString();
 
-    if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex))
+    if (BarCloseStatus && IsVolImbGreen(sc, i))
     {
-        try
-        {
-            int ic = sc.CurrentIndex; double o = sc.Open[ic];
-            double hc = sc.High[ic + 1]; double lc = sc.Low[ic + 1]; double hc2 = sc.High[ic + 2]; 
-            double lc2 = sc.Low[ic + 2]; double hc3 = sc.High[ic + 3]; double lc3 = sc.Low[ic + 3];
-            double hc2 = sc.High[ic + 2]; double lc2 = sc.Low[ic + 2]; double hc3 = sc.High[ic + 3]; 
-            double lc3 = sc.Low[ic + 3]; double hc4 = sc.High[ic + 4]; double lc4 = sc.Low[ic + 4];
-            if ((hc > o && lc < o) || (hc2 > o && lc2 < o) || (hc3 > o && lc3 < o) || (hc4 > o && lc4 < o))
-                return;
-        }
-        catch (const std::exception &e)
-        {
-            sc.AddMessageToLog(e.what(), 0);
-        }
         sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
         Subgraph_VolImbUp[i] = low - (2 * sc.TickSize);
-        txt.Format("Volume Imbalance BUY at %.2d", close);
-        // sc.AddMessageToLog(txt, 0);
+        txt.Format("Volume Imbalance BUY at %.2f", close);
         if (sc.IsNewBar(i))
-            sc.AlertWithMessage(197, "Volume Imbalance BUY");
+        {
+            sc.AlertWithMessage(181, "Volume Imbalance BUY");
+            MaybeSendWebhook(sc, WebhookURL, txt);
+        }
     }
 
-    if (BarCloseStatus && IsVolImbRed(sc, sc.CurrentIndex))
+    if (BarCloseStatus && IsVolImbRed(sc, i))
     {
-        try
-        {
-            int ic = sc.CurrentIndex; double o = sc.Open[ic];
-            double hc = sc.High[ic + 1]; double lc = sc.Low[ic + 1]; double hc2 = sc.High[ic + 2]; 
-            double lc2 = sc.Low[ic + 2]; double hc3 = sc.High[ic + 3]; double lc3 = sc.Low[ic + 3];
-            double hc2 = sc.High[ic + 2]; double lc2 = sc.Low[ic + 2]; double hc3 = sc.High[ic + 3]; 
-            double lc3 = sc.Low[ic + 3]; double hc4 = sc.High[ic + 4]; double lc4 = sc.Low[ic + 4];
-            if ((hc > o && lc < o) || (hc2 > o && lc2 < o) || (hc3 > o && lc3 < o) || (hc4 > o && lc4 < o))
-                return;
-        }
-        catch (const std::exception &e)
-        {
-            sc.AddMessageToLog(e.what(), 0);
-        }
         sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
         Subgraph_VolImbDown[i] = high + (2 * sc.TickSize);
-        txt.Format("Volume Imbalance SELL at %.2d", close);
-        // sc.AddMessageToLog(txt, 0);
+        txt.Format("Volume Imbalance SELL at %.2f", close);
         if (sc.IsNewBar(i))
-            sc.AlertWithMessage(198, "Volume Imbalance SELL");
+        {
+            sc.AlertWithMessage(182, "Volume Imbalance SELL");
+            MaybeSendWebhook(sc, WebhookURL, txt);
+        }
     }
 }

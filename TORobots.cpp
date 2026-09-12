@@ -82,7 +82,7 @@ int OrderPizza(SCStudyInterfaceRef sc, int iDirection, int MaxPos)
 	if (sc.Index == orderBar)
 		return -3;
 
-	int iR;
+	int iR = 0;
 	s_SCPositionData PositionData;
 
 	sc.GetTradePosition(PositionData);
@@ -91,7 +91,7 @@ int OrderPizza(SCStudyInterfaceRef sc, int iDirection, int MaxPos)
 	{
 		s_SCNewOrder NewOrder;
 		NewOrder.OrderQuantity = 1;
-		NewOrder.OrderType = ordertype
+		NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
 		NewOrder.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED;
 
 		if (iDirection == 1)
@@ -102,17 +102,6 @@ int OrderPizza(SCStudyInterfaceRef sc, int iDirection, int MaxPos)
 		return -2;
 	}
 
-	if (iR > 0)//order was accepted
-	{
-		
-	}
-	else//order error
-	{
-		if (sc.Index == sc.ArraySize - 1)
-		{
-			// log error
-		}
-	}
 
 	return 0;
 }
@@ -129,18 +118,16 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 	SCString txt;
 
 	SCInputRef Input_Enabled = sc.Input[0];
-	SCInputRef Input_Simulation = sc.Input[1];
+	SCInputRef Input_SendOrders = sc.Input[1];
 
 	SCInputRef Input_TradeBuySell = sc.Input[2];
 	SCInputRef Input_TradeImbalance = sc.Input[3];
 	SCInputRef Input_TradeEngulfBB = sc.Input[4];
 	SCInputRef Input_TradeFVG = sc.Input[5];
 
-	SCInputRef Input_Aggressive = sc.Input[6];
-
 	SCInputRef Input_MaxPositions = sc.Input[7];
 	SCInputRef Input_MaxLoss = sc.Input[8];
-	SCInputRef Input_MaxProfit = sc.Input[8];
+	SCInputRef Input_MaxProfit = sc.Input[22];
 	SCInputRef Input_IgnoreDoji = sc.Input[9];
 	SCInputRef Input_Trend = sc.Input[10];
 
@@ -211,9 +198,9 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Input_Enabled.SetYesNo(1);
 		Input_Enabled.SetDescription("This input enables the study and allows it to function. Otherwise, it does nothing.");
 
-		Input_Simulation.Name = "Send Orders To Trade Service";
-		Input_Simulation.SetYesNo(1);
-		Input_Simulation.SetDescription("Send real orders to your trading service");
+		Input_SendOrders.Name = "Send Orders To Trade Service";
+		Input_SendOrders.SetYesNo(0);
+		Input_SendOrders.SetDescription("Send real orders to your trading service. Default OFF - enable only to trade live.");
 
 		Input_TradeBuySell.Name = "Standard Buy/Sell";
 		Input_TradeBuySell.SetYesNo(1);
@@ -231,10 +218,6 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		Input_TradeFVG.SetYesNo(0);
 		Input_TradeFVG.SetDescription("Open trade when fair value gap is formed");
 
-		Input_Aggressive.Name = "Aggressive Mode";
-		Input_Aggressive.SetYesNo(0);
-		Input_Aggressive.SetDescription("Trades on every same-colored-candle, then bails when opposite colored candle closes");
-
 		Input_MaxPositions.Name = "Maximum Positions";
 		Input_MaxPositions.SetInt(20);
 		Input_MaxPositions.SetDescription("Maximum number of simultaneous open positions allowed");
@@ -245,7 +228,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 
 		Input_MaxProfit.Name = "Max Profit";
 		Input_MaxProfit.SetInt(20000);
-		Input_MaxProfit.SetDescription("Maximum profit in dollars");
+		Input_MaxProfit.SetDescription("Maximum profit in dollars (own input slot - was sharing Max Loss)");
 
 		Input_IgnoreDoji.Name = "Ignore Dojis";
 		Input_IgnoreDoji.SetYesNo(1);
@@ -362,7 +345,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 
 #pragma endregion
 
-	sc.SendOrdersToTradeService = Input_Simulation.GetYesNo();
+	sc.SendOrdersToTradeService = Input_SendOrders.GetYesNo();
 	sc.MaximumPositionAllowed = Input_MaxPositions.GetInt();
 
 	if (!Input_Enabled.GetYesNo())
@@ -384,17 +367,17 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 	int& currBar = sc.GetPersistentInt(1);
 
 	s_SCPositionData SCPositionData;
-	if (false && sc.GetTradePosition(SCPositionData))
+	if (sc.GetTradePosition(SCPositionData))
 	{
-		double totalPNL = abs(SCPositionData.DailyProfitLoss) + abs(SCPositionData.OpenProfitLoss);
-		if (totalPNL > Input_MaxLoss.GetInt())
+		const double NetPnL = SCPositionData.DailyProfitLoss + SCPositionData.OpenProfitLoss;
+		if (NetPnL <= -static_cast<double>(Input_MaxLoss.GetInt()))
 		{
-			r_Msg = "You exceeded your max loss";
+			r_Msg = "Halted: max loss reached - flatten manually";
 			return;
 		}
-		if (totalPNL > Input_MaxProfit.GetInt())
+		if (NetPnL >= static_cast<double>(Input_MaxProfit.GetInt()))
 		{
-			r_Msg = "You achieved your profit target";
+			r_Msg = "Halted: profit target reached - flatten manually";
 			return;
 		}
 		sF.Format("GoldBug - Version 1.4 \nDaily PNL: %.02f, Open PNL: %.02f \n", SCPositionData.DailyProfitLoss, SCPositionData.OpenProfitLoss);
@@ -403,12 +386,14 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 	}
 
 	int i = sc.Index;
+	if (i < 2)
+		return;
 	currBar = sc.Index;
 	int iPos = 0;
 	int& r_SqueezeUp = sc.GetPersistentInt(0);
 	int cl = sc.GetBarHasClosedStatus(i); // BHCS_BAR_HAS_NOT_CLOSED
 	SCBaseDataRef in = sc.BaseData;
-	double close = in[SC_OPEN][i];
+	double close = in[SC_LAST][i];
 	SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
 	SCFloatArrayRef Array_Value = Subgraph_Calc.Arrays[0];
 
@@ -421,14 +406,14 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 		if (i < sc.ArraySize - 1)
 			BarCloseStatus = true;
 
-		int FVGMinTickSize = 1;
+		const double FVGMinGap = 1.0 * sc.TickSize;
 		float L1 = sc.Low[i];
 		float H1 = sc.High[i];
 		float L3 = sc.Low[i - 2];
 		float H3 = sc.High[i - 2];
 
-		bool FVGUp = (H3 < L1) && (L1 - H3 >= FVGMinTickSize);
-		bool FVGDn = (L3 > H1) && (L3 - H1 >= FVGMinTickSize);
+		bool FVGUp = (H3 < L1) && ((L1 - H3) >= FVGMinGap);
+		bool FVGDn = (L3 > H1) && ((L3 - H1) >= FVGMinGap);
 
 		// SUPER TREND
 		int ATRMultiplier = 2;
@@ -592,7 +577,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			(Input_UseHMA.GetYesNo() == SC_YES && hma > close) ||
 			(Input_UseSuperTrend.GetYesNo() == SC_YES && bSuperDown) ||
 			(Input_Trend.GetIndex() == 1) ||
-			(Input_WaddahExploding.GetYesNo() == SC_YES && abs(t1) < e1)
+			(Input_WaddahExploding.GetYesNo() == SC_YES && fabs(t1) < e1)
 			)
 
 			bShowUp = false;
@@ -608,7 +593,7 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			(Input_UseHMA.GetYesNo() == SC_YES && hma < close) ||
 			(Input_UseSuperTrend.GetYesNo() == SC_YES && bSuperUp) ||
 			(Input_Trend.GetIndex() == 2) ||
-			(Input_WaddahExploding.GetYesNo() == SC_YES && abs(t1) < e1)
+			(Input_WaddahExploding.GetYesNo() == SC_YES && fabs(t1) < e1)
 			)
 			bShowDown = false;
 
@@ -619,8 +604,8 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			txt.Format("Standard BUY Signal at %.2f", sc.Low[sc.Index]);
 			r_Msg = txt;
 			LogInfo(sc);
-			//if (sc.IsNewBar(i))
-				sc.AlertWithMessage(199, "Standard BUY Signal");
+			if (sc.IsNewBar(i))
+				sc.AlertWithMessage(195, "Standard BUY Signal");
 		}
 
 		if (BarCloseStatus && bShowDown)
@@ -630,8 +615,8 @@ SCSFExport scsf_GoldBug(SCStudyInterfaceRef sc)
 			txt.Format("Standard SELL Signal at %.2f", sc.Low[sc.Index]);
 			r_Msg = txt;
 			LogInfo(sc);
-			//if (sc.IsNewBar(i))
-				sc.AlertWithMessage(200, "Standard SELL Signal");
+			if (sc.IsNewBar(i))
+				sc.AlertWithMessage(196, "Standard SELL Signal");
 		}
 /*
 		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex) && Input_Trend.GetIndex() != 2)

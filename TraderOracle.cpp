@@ -50,7 +50,7 @@ bool IsRed(SCBaseDataRef InData, int index)
 
 bool IsNearEqual(double value1, double value2, SCBaseDataRef InData, int index, double percent)
 {
-	return abs(value1 - value2) < (3 * percent); //PercentOfCandleLength(InData, index, percent);
+	return fabs(value1 - value2) < PercentOfCandleLength(InData, index, percent);
 }
 
 bool IsUpperWickSmall(SCBaseDataRef InData, int index, double percent)
@@ -143,7 +143,7 @@ bool IsTweezerTop(SCStudyInterfaceRef sc, int index, float UpperBand)
 {
 	SCBaseDataRef InData = sc.BaseData;
 	bool ret_flag = false;
-	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
+	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, 10.0) // percent of candle length; ~matches old 3-tick tolerance on typical ES candles
 		&& InData[SC_LOW][index] < InData[SC_LOW][index - 1] // current bar lower than previous
 		&& IsRed(InData, index)
 		&& IsRed(InData, index - 1)
@@ -161,7 +161,7 @@ bool IsTweezerBottom(SCStudyInterfaceRef sc, int index, float LowerBand)
 	SCBaseDataRef InData = sc.BaseData;
 	bool ret_flag = false;
 
-	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, sc.TickSize)
+	if (IsNearEqual(InData[SC_OPEN][index - 1], InData[SC_LAST][index - 2], InData, index, 10.0) // percent of candle length; ~matches old 3-tick tolerance on typical ES candles
 		&& InData[SC_HIGH][index] > InData[SC_HIGH][index - 1]
 		&& IsGreen(InData, index)
 		&& IsGreen(InData, index - 1)
@@ -242,14 +242,14 @@ bool IsDoji(SCBaseDataRef InData, int index)
 
 	if (IsRed(InData, index))
 	{
-		if (abs(InData[SC_HIGH][index] - InData[SC_OPEN][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index]) &&
-		  abs(InData[SC_LAST][index] - InData[SC_LOW][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
+		if (fabs(InData[SC_HIGH][index] - InData[SC_OPEN][index]) > fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]) &&
+		  fabs(InData[SC_LAST][index] - InData[SC_LOW][index]) > fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
 			ret_flag = true;
 	}
 	else if (IsGreen(InData, index))
 	{
-		if (abs(InData[SC_HIGH][index] - InData[SC_LAST][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index]) &&
-			abs(InData[SC_OPEN][index] - InData[SC_LOW][index]) > abs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
+		if (fabs(InData[SC_HIGH][index] - InData[SC_LAST][index]) > fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]) &&
+			fabs(InData[SC_OPEN][index] - InData[SC_LOW][index]) > fabs(InData[SC_OPEN][index] - InData[SC_LAST][index]))
 			ret_flag = true;
 	}
 
@@ -305,6 +305,8 @@ void DrawText(SCStudyInterfaceRef sc, SCSubgraphRef screffy, SCString txt, int i
 SCSFExport scsf_Delta_Intensity(SCStudyInterfaceRef sc)
 {
 	int i = sc.Index;
+	if (i < 2)
+		return;
 
 	SCInputRef Input_Threshold = sc.Input[0];
 	SCInputRef Input_InputDataLow = sc.Input[1];
@@ -369,7 +371,7 @@ SCSFExport scsf_Delta_Intensity(SCStudyInterfaceRef sc)
 
 	float delta = sc.AskVolume[i] - sc.BidVolume[i];
 	float deltaPer = delta > 0 ? (delta / maxDelta) : (delta / minDelta);
-	float deltaIntense = abs((delta * deltaPer) * volsec);
+	float deltaIntense = fabs((delta * deltaPer) * volsec);
 
 	if (deltaIntense > Input_Threshold.GetInt())
 	{
@@ -759,6 +761,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 #pragma endregion
 
 	int i = sc.Index;
+	if (i < 2)
+		return;
 	int& r_SqueezeUp = sc.GetPersistentInt(0);
 	int cl = sc.GetBarHasClosedStatus(i); // BHCS_BAR_HAS_NOT_CLOSED
 	SCBaseDataRef in = sc.BaseData;
@@ -770,8 +774,8 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	double popen = sc.Open[i - 1];
 	double phigh = sc.High[i - 1];
 	double plow = sc.Low[i - 1];
-	double body = abs(open - close);
-	double pbody = abs(popen - pclose);
+	double body = fabs(open - close);
+	double pbody = fabs(popen - pclose);
 	bool red = open > close;
 	bool green = open < close;
 	bool pdoji = false;
@@ -779,15 +783,15 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 	double lowerwick = 0;
 	if (green)
 	{
-		upperwick = abs(high - close);
-		lowerwick = abs(open - low);
-		pdoji = abs(phigh - pclose) > pbody && abs(popen - plow) > body;
+		upperwick = fabs(high - close);
+		lowerwick = fabs(open - low);
+		pdoji = fabs(phigh - pclose) > pbody && fabs(popen - plow) > body;
 	}
 	else // red
 	{
-		upperwick = abs(high - open);
-		lowerwick = abs(close - low);
-		pdoji = abs(phigh - popen) > pbody && abs(pclose - plow) > body;
+		upperwick = fabs(high - open);
+		lowerwick = fabs(close - low);
+		pdoji = fabs(phigh - popen) > pbody && fabs(pclose - plow) > body;
 	}
 	bool doji = upperwick > body && lowerwick > body;
 	SCFloatArrayRef Price = sc.BaseData[SC_HL_AVG];
@@ -1057,7 +1061,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		int iRedGreenColor = 255;
 		if (Input_BarColor.GetIndex() == 1) // waddah explosion
 		{
-			iRedGreenColor = min(255, abs(t1) + Input_BarColorWaddah.GetInt());
+			iRedGreenColor = min(255, fabs(t1) + Input_BarColorWaddah.GetInt());
 			if (t1 > 0)
 				Subgraph_ColorBar.DataColor[i] = RGB(0, iRedGreenColor, 0);
 			else
@@ -1065,7 +1069,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 		}
 		else if (Input_BarColor.GetIndex() == 2) // linda macd
 		{
-			iRedGreenColor = min(255, abs(t1) + Input_BarColorLinda.GetInt());
+			iRedGreenColor = min(255, fabs(t1) + Input_BarColorLinda.GetInt());
 			if (linda > 0)
 				Subgraph_ColorBar.DataColor[i] = RGB(0, iRedGreenColor, 0);
 			else
@@ -1114,7 +1118,7 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			txt.Format("Olympus BUY Signal at %.2d", close);
 			//sc.AddMessageToLog(txt, 0);
 			if (i >= sc.ArraySize - 1)
-				sc.AlertWithMessage(199, "Olympus BUY Signal");
+				sc.AlertWithMessage(183, "Olympus BUY Signal");
 		}
 
 		if (BarCloseStatus && bShowDown)
@@ -1122,29 +1126,29 @@ SCSFExport scsf_Olympus(SCStudyInterfaceRef sc)
 			Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
 			txt.Format("Olympus SELL Signal at %.2d", close);
 			if (sc.IsNewBar(i))
-				sc.AlertWithMessage(200, "Olympus SELL Signal");
+				sc.AlertWithMessage(184, "Olympus SELL Signal");
 		}
 
 		Subgraph_VolImbUp[i] = 0;
 		Subgraph_VolImbDown[i] = 0;
 
-		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex))
+	if (BarCloseStatus && IsVolImbGreen(sc, i))
 		{
 			sc.AddLineUntilFutureIntersection(i, i, open, RGB(106, 149, 247), 4, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbUp[i] = low - ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance BUY at %.2d", close);
 			if (sc.IsNewBar(i))
-				sc.AlertWithMessage(197, "Volume Imbalance BUY");
+				sc.AlertWithMessage(185, "Volume Imbalance BUY");
 		}
 
-		if (BarCloseStatus && IsVolImbRed(sc, sc.CurrentIndex))
+	if (BarCloseStatus && IsVolImbRed(sc, i))
 		{
 			sc.AddLineUntilFutureIntersection(i, i, open, RGB(106, 149, 247), 4, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbDown[i] = high + ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance SELL at %.2d", close);
 			//sc.AddMessageToLog(txt, 0);
 			if (sc.IsNewBar(i))
-				sc.AlertWithMessage(198, "Volume Imbalance SELL");
+				sc.AlertWithMessage(186, "Volume Imbalance SELL");
 		}
 
 
@@ -1485,6 +1489,8 @@ SCSFExport scsf_OlympusOLD(SCStudyInterfaceRef sc)
 	}
 
 	int i = sc.Index;
+	if (i < 2)
+		return;
 	int& r_SqueezeUp = sc.GetPersistentInt(0);
 	int cl = sc.GetBarHasClosedStatus(i); // BHCS_BAR_HAS_NOT_CLOSED
 	SCBaseDataRef in = sc.BaseData;
@@ -1658,10 +1664,10 @@ SCSFExport scsf_OlympusOLD(SCStudyInterfaceRef sc)
 			BodyLength(sc.BaseData, i) < UpperWickLength(sc.BaseData, i))
 			return;
 
-		if (IsGreen(sc.BaseData, i) && abs(in[SC_HIGH][i] - in[SC_LAST][i]) < dTickie)
+		if (IsGreen(sc.BaseData, i) && fabs(in[SC_HIGH][i] - in[SC_LAST][i]) < dTickie)
 			Subgraph_ShavedGreen[i] = 1;
 
-		if (IsRed(sc.BaseData, i) && abs(in[SC_LOW][i] - in[SC_LAST][i]) < dTickie)
+		if (IsRed(sc.BaseData, i) && fabs(in[SC_LOW][i] - in[SC_LAST][i]) < dTickie)
 			Subgraph_ShavedRed[i] = 1;
 
 		if (in[SC_LOW][i] < LowerBand &&
@@ -1719,36 +1725,36 @@ SCSFExport scsf_OlympusOLD(SCStudyInterfaceRef sc)
 			//DrawText(sc, Subgraph_3oU, "FILL", 0, 5);
 		}
 
-		if (IsThreeOutsideUp(sc, sc.CurrentIndex) && BarCloseStatus)
+	if (IsThreeOutsideUp(sc, i) && BarCloseStatus)
 		{
 			DrawText(sc, Subgraph_3oU, "3oU", 0, 5);
 			Subgraph_3oU[i] = sc.Low[i];
 		}
 
-		if (IsThreeOutsideDown(sc, sc.CurrentIndex) && BarCloseStatus)
+	if (IsThreeOutsideDown(sc, i) && BarCloseStatus)
 		{
 			DrawText(sc, Subgraph_3oD, "3oD", 0, 5);
 			Subgraph_3oD[i] = sc.Low[i];
 		}
 
-		if (IsTweezerTop(sc, sc.CurrentIndex, UpperBand))
+	if (IsTweezerTop(sc, i, UpperBand))
 		{
 			DrawText(sc, Subgraph_EqualH, "Eq Hi", 1, 5);
 			Subgraph_EqualH[i] = sc.Low[i];
 		}
 
-		if (IsTweezerBottom(sc, sc.CurrentIndex, LowerBand))
+	if (IsTweezerBottom(sc, i, LowerBand))
 		{
 			DrawText(sc, Subgraph_EqualL, "Eq Lo", -1, 5);
 			Subgraph_EqualL[i] = sc.Low[i];
 		}
 
-		if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, UpperBand, sc.TickSize))
+	if (IsTrampoline(sc, i, rsi, prsi, pprsi, UpperBand, sc.TickSize))
 		{
 			DrawText(sc, Subgraph_Tramp, "TR", -1, 3);
 			Subgraph_Tramp[i] = sc.Low[i];
 		}
-		else if (IsTrampoline(sc, sc.CurrentIndex, rsi, prsi, pprsi, LowerBand, sc.TickSize))
+	else if (IsTrampoline(sc, i, rsi, prsi, pprsi, LowerBand, sc.TickSize))
 		{
 			DrawText(sc, Subgraph_Tramp, "TR", 1, 3);
 			Subgraph_Tramp[i] = sc.Low[i];
@@ -1760,7 +1766,7 @@ SCSFExport scsf_OlympusOLD(SCStudyInterfaceRef sc)
 		int iRedGreenColor = 255;
 		if (Input_BarColor.GetIndex() == 1) // waddah explosion
 		{
-			iRedGreenColor = min(255, abs(t1) + Input_BarColorWaddah.GetInt());
+			iRedGreenColor = min(255, fabs(t1) + Input_BarColorWaddah.GetInt());
 			if (t1 > 0)
 				Subgraph_ColorBar.DataColor[sc.Index] = RGB(0, iRedGreenColor, 0);
 			else
@@ -1768,7 +1774,7 @@ SCSFExport scsf_OlympusOLD(SCStudyInterfaceRef sc)
 		}
 		else if (Input_BarColor.GetIndex() == 2) // linda macd
 		{
-			iRedGreenColor = min(255, abs(t1) + Input_BarColorLinda.GetInt());
+			iRedGreenColor = min(255, fabs(t1) + Input_BarColorLinda.GetInt());
 			if (linda > 0)
 				Subgraph_ColorBar.DataColor[sc.Index] = RGB(0, iRedGreenColor, 0);
 			else
@@ -1817,7 +1823,7 @@ SCSFExport scsf_OlympusOLD(SCStudyInterfaceRef sc)
 			txt.Format("Olympus BUY Signal at %.2d", close);
 			//sc.AddMessageToLog(txt, 0);
 			if (i >= sc.ArraySize - 1)
-				sc.AlertWithMessage(199, "Olympus BUY Signal");
+				sc.AlertWithMessage(187, "Olympus BUY Signal");
 		}
 
 		if (BarCloseStatus && bShowDown)
@@ -1825,29 +1831,29 @@ SCSFExport scsf_OlympusOLD(SCStudyInterfaceRef sc)
 			Subgraph_DotDown[i] = sc.High[i] + ((Input_DownOffset.GetInt()) * sc.TickSize);
 			txt.Format("Olympus SELL Signal at %.2d", close);
 			if (sc.IsNewBar(i))
-				sc.AlertWithMessage(200, "Olympus SELL Signal");
+				sc.AlertWithMessage(188, "Olympus SELL Signal");
 		}
 
 		Subgraph_VolImbUp[i] = 0;
 		Subgraph_VolImbDown[i] = 0;
 
-		if (BarCloseStatus && IsVolImbGreen(sc, sc.CurrentIndex))
+	if (BarCloseStatus && IsVolImbGreen(sc, i))
 		{
 			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], RGB(106, 149, 247), 4, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbUp[i] = sc.Low[i] - ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance BUY at %.2d", close);
 			if (sc.IsNewBar(i))
-				sc.AlertWithMessage(197, "Volume Imbalance BUY");
+				sc.AlertWithMessage(189, "Volume Imbalance BUY");
 		}
 
-		if (BarCloseStatus && IsVolImbRed(sc, sc.CurrentIndex))
+	if (BarCloseStatus && IsVolImbRed(sc, i))
 		{
 			sc.AddLineUntilFutureIntersection(sc.Index, sc.Index, sc.Open[sc.Index], RGB(106, 149, 247), 4, LINESTYLE_SOLID, false, false, "");
 			Subgraph_VolImbDown[i] = sc.High[i] + ((Input_UpOffset.GetInt()) * sc.TickSize);
 			txt.Format("Volume Imbalance SELL at %.2d", close);
 			//sc.AddMessageToLog(txt, 0);
 			if (sc.IsNewBar(i))
-				sc.AlertWithMessage(198, "Volume Imbalance SELL");
+				sc.AlertWithMessage(190, "Volume Imbalance SELL");
 		}
 
 
@@ -1992,6 +1998,8 @@ SCSFExport scsf_SierraSqueeze(SCStudyInterfaceRef sc)
 
 	// Inputs
 	int i = sc.Index;
+	if (i < 2)
+		return;
 	const DWORD inside		= RGB(255, 0, 0);	
 	const DWORD outside		= RGB(0, 255, 0);	
 
@@ -2455,7 +2463,7 @@ SCSFExport scsf_WaddahExplosion(SCStudyInterfaceRef sc)
 	}
 	else
 	{
-		if (abs(t1) > e1)
+		if (fabs(t1) > e1)
 		{
 			Subgraph_WaddahPos[sc.Index] = 0;
 			Subgraph_WaddahNeg[sc.Index] = 0;
@@ -2481,6 +2489,8 @@ SCSFExport scsf_Linda_Anti_Setup(SCStudyInterfaceRef sc)
 #pragma region INPUTS
 
 	int i = sc.Index;
+	if (i < 2)
+		return;
 
 	int& iHigh = sc.GetPersistentInt(1);
 	int& iLow = sc.GetPersistentInt(2);
@@ -2623,6 +2633,8 @@ SCSFExport scsf_Linda_Anti_Setup(SCStudyInterfaceRef sc)
 SCSFExport scsf_DTS_Scalper(SCStudyInterfaceRef sc)
 {
 	int i = sc.Index;
+	if (i < 2)
+		return;
 
 	SCSubgraphRef Subgraph_DotUp = sc.Subgraph[0];
 	SCSubgraphRef Subgraph_DotDown = sc.Subgraph[1];

@@ -62,11 +62,6 @@ namespace {
 		IN_NUMBER_COLOR
 	};
 
-	std::map<int, int> g_SlotValues;
-	std::string        g_LoadedPath;
-	int                g_LoadedReloadFlag = -1;
-	int                g_LoadFailed       = 0;
-
 	int MinutesOfDay(const SCDateTime& DT)
 	{
 		return DT.GetHour() * 60 + DT.GetMinute();
@@ -108,15 +103,15 @@ namespace {
 		return 1;
 	}
 
-	void LoadSlotFile(const std::string& Path)
+	static void LoadSlotFile(const std::string& Path, std::map<int, int>& Slots, int& Failed)
 	{
-		g_SlotValues.clear();
-		g_LoadFailed = 0;
+		Slots.clear();
+		Failed = 0;
 
 		std::ifstream File(Path.c_str());
 		if (!File.is_open())
 		{
-			g_LoadFailed = 1;
+			Failed = 1;
 			return;
 		}
 
@@ -135,10 +130,47 @@ namespace {
 			int Minutes = 0;
 			int Value   = 0;
 			if (ParseLine(Line, Minutes, Value))
-				g_SlotValues[Minutes] = Value;
+				Slots[Minutes] = Value;
 		}
 
 		File.close();
+	}
+
+	static std::string SerializeSlots(const std::map<int, int>& Slots)
+	{
+		std::string Out;
+		for (std::map<int, int>::const_iterator it = Slots.begin(); it != Slots.end(); ++it)
+		{
+			Out += std::to_string(it->first);
+			Out += '=';
+			Out += std::to_string(it->second);
+			Out += ';';
+		}
+		return Out;
+	}
+
+	static void ParseSlotsBlob(const char* Blob, std::map<int, int>& Slots)
+	{
+		Slots.clear();
+		if (Blob == nullptr || Blob[0] == '\0')
+			return;
+
+		const char* p = Blob;
+		while (*p != '\0')
+		{
+			char* end = nullptr;
+			const long Minutes = strtol(p, &end, 10);
+			if (end == p || *end != '=')
+				break;
+			p = end + 1;
+			const long Value = strtol(p, &end, 10);
+			if (end == p)
+				break;
+			Slots[(int)Minutes] = (int)Value;
+			p = end;
+			if (*p == ';')
+				++p;
+		}
 	}
 
 	// Vertical position of the top of a given text line, in relative units.
@@ -410,17 +442,31 @@ SCSFExport scsf_TimeSlotValue(SCStudyInterfaceRef sc)
 	const std::string FilePath = sc.Input[IN_FILE_PATH].GetString();
 	const int ReloadFlag = sc.Input[IN_RELOAD].GetYesNo();
 
-	if (FilePath != g_LoadedPath
-		|| ReloadFlag != g_LoadedReloadFlag
+	// Per-instance slot cache: file-scope globals would be shared across all
+	// charts running this study, so path/flag/failure/blob live in persistent
+	// slots 100/101 (drawing caches use strings 0-4; no persistent ints yet).
+	SCString& CachedPath = sc.GetPersistentSCString(100);
+	SCString& SlotsBlob = sc.GetPersistentSCString(101);
+	int& CachedReloadFlag = sc.GetPersistentInt(100);
+	int& LoadFailed = sc.GetPersistentInt(101);
+
+	std::map<int, int> SlotValues;
+	if (strcmp(CachedPath.GetChars(), FilePath.c_str()) != 0
+		|| ReloadFlag != CachedReloadFlag
 		|| sc.IsFullRecalculation
-		|| (g_SlotValues.empty() && !g_LoadFailed))
+		|| (SlotsBlob.GetLength() == 0 && LoadFailed == 0))
 	{
-		LoadSlotFile(FilePath);
-		g_LoadedPath = FilePath;
-		g_LoadedReloadFlag = ReloadFlag;
+		LoadSlotFile(FilePath, SlotValues, LoadFailed);
+		CachedPath = FilePath.c_str();
+		CachedReloadFlag = ReloadFlag;
+		SlotsBlob = SerializeSlots(SlotValues).c_str();
+	}
+	else
+	{
+		ParseSlotsBlob(SlotsBlob.GetChars(), SlotValues);
 	}
 
-	if (g_LoadFailed)
+	if (LoadFailed)
 	{
 		ClearRectangle(sc);
 		SCString Message;
@@ -463,8 +509,8 @@ SCSFExport scsf_TimeSlotValue(SCStudyInterfaceRef sc)
 	SCString NextText;
 	if (sc.Input[IN_SHOW_NEXT_SLOT].GetYesNo())
 	{
-		std::map<int, int>::const_iterator NextFound = g_SlotValues.find(NextFileKey);
-		if (NextFound != g_SlotValues.end())
+		std::map<int, int>::const_iterator NextFound = SlotValues.find(NextFileKey);
+		if (NextFound != SlotValues.end())
 		{
 			NextText.Format("next %02d:%02d -> %d",
 				(NextLocal / 60) % 24, NextLocal % 60, NextFound->second);
@@ -476,7 +522,7 @@ SCSFExport scsf_TimeSlotValue(SCStudyInterfaceRef sc)
 	}
 
 	SCString CountText;
-	CountText.Format("%d slots loaded", (int)g_SlotValues.size());
+	CountText.Format("%d slots loaded", (int)SlotValues.size());
 
 	SetTextLine(sc, 0, SlotText, TextColor);
 	SetTextLine(sc, 2, NextText, TextColor);
@@ -485,9 +531,9 @@ SCSFExport scsf_TimeSlotValue(SCStudyInterfaceRef sc)
 	//------------------------------------------------------------------------
 	// Rectangle in place of line 1
 	//------------------------------------------------------------------------
-	std::map<int, int>::const_iterator Found = g_SlotValues.find(FileKey);
+	std::map<int, int>::const_iterator Found = SlotValues.find(FileKey);
 
-	if (Found == g_SlotValues.end())
+	if (Found == SlotValues.end())
 	{
 		ClearRectangle(sc);
 		SetTextLine(sc, 1, "--", MissingColor);

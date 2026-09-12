@@ -2,6 +2,20 @@
 
 SCDLLName("Mancini Plus DLL") 
 
+static double ParseLevelPrice(const SCString& Token)
+{
+	// Leading numeric prefix of a level token ("5721", "5721.50", "5721(major)").
+	// Returns 0 when the token holds no number ("(major)" after tokenizing).
+	const char* Chars = Token.GetChars();
+	int Len = Token.GetLength();
+	int Start = 0;
+	while (Start < Len && !(isdigit((unsigned char)Chars[Start]) || Chars[Start] == '.' || Chars[Start] == '-' || Chars[Start] == '+'))
+		++Start;
+	if (Start >= Len || !isdigit((unsigned char)Chars[Start]))
+		return 0.0;
+	return atof(Chars + Start);
+}
+
 SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 {
 	SCGraphData srcChart;
@@ -124,11 +138,9 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 				sSupport.Tokenize(", ", tkSupport);
 				for (SCString s: tkSupport)
 				{
-                    sL = s.Left(4);
-					price = sL.GetChars();
-					float pr = atof(price.GetChars()) * Ratio;
-					Message.Format("Ratio: %f, Before: %s, After: %f", Ratio, price.GetChars(), pr);
-					sc.AddMessageToLog(Message, 1);
+					float pr = (float)ParseLevelPrice(s) * Ratio;
+					if (pr == 0.0f)
+						continue;
 
 					s_UseTool Tool;
 					Tool.LineStyle = Subgraph_Support.LineStyle;
@@ -144,11 +156,11 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 					Tool.AddMethod = UTAM_ADD_OR_ADJUST;
                     Tool.FontSize = Input_TextSize.GetInt();
 					Tool.ShowPrice = 0;
-					if (Input_ShowPrice.GetYesNo() == SC_YES);
+					if (Input_ShowPrice.GetYesNo() == SC_YES)
 						Tool.ShowPrice = 1;
 					Tool.TransparencyLevel = 50;
                     Tool.Color = Subgraph_Support.PrimaryColor;
-                    Tool.Text.Format(Input_Text.GetString());
+                    Tool.Text = Input_Text.GetString();
                     if (s.IndexOf('(') != -1)
                     {
 						Tool.LineStyle = Subgraph_SupportMajor.LineStyle;
@@ -167,11 +179,9 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 				for (SCString s : tkResist)
 				{
 					// 5615 (major), 5611, 5604 (major)
-					sL = s.Left(4);
-					price = sL.GetChars();
-					float pr = atof(price.GetChars()) * Ratio;
-					Message.Format("Ratio: %f, Before: %s, After: %f", Ratio, price.GetChars(), pr);
-					sc.AddMessageToLog(Message, 1);
+					float pr = (float)ParseLevelPrice(s) * Ratio;
+					if (pr == 0.0f)
+						continue;
 
 					s_UseTool Tool;
 					Tool.LineStyle = Subgraph_Resist.LineStyle;
@@ -187,11 +197,11 @@ SCSFExport scsf_ManciniPlus(SCStudyInterfaceRef sc)
 					Tool.AddMethod = UTAM_ADD_OR_ADJUST;
 					Tool.FontSize = Input_TextSize.GetInt();
 					Tool.ShowPrice = 0;
-					if (Input_ShowPrice.GetYesNo() == SC_YES);
+					if (Input_ShowPrice.GetYesNo() == SC_YES)
 						Tool.ShowPrice = 1;
 					Tool.TransparencyLevel = 50;
 					Tool.Color = Subgraph_Resist.PrimaryColor;
-					Tool.Text.Format(Input_Text.GetString());
+					Tool.Text = Input_Text.GetString();
 					if (s.IndexOf('(') != -1)
 					{
 						Tool.LineStyle = Subgraph_ResistMajor.LineStyle;

@@ -709,16 +709,16 @@ SCSFExport scsf_RollingZScoreChannel(SCStudyInterfaceRef sc)
     if (alertsEnabled && prevValid && sc.GetBarHasClosedStatus(idx) == BHCS_BAR_HAS_CLOSED)
     {
         if (crossOverUpper)
-            sc.SetAlert(1, "Break Above Upper");
+            sc.SetAlert(171, "Break Above Upper");
         if (crossUnderLower)
-            sc.SetAlert(2, "Break Below Lower");
+            sc.SetAlert(172, "Break Below Lower");
         if (reentryDn)
-            sc.SetAlert(3, "Re-Entry From Above");
+            sc.SetAlert(173, "Re-Entry From Above");
         if (reentryUp)
-            sc.SetAlert(4, "Re-Entry From Below");
+            sc.SetAlert(174, "Re-Entry From Below");
         if (crossOverBasis)
-            sc.SetAlert(5, "Basis Cross Up");
+            sc.SetAlert(175, "Basis Cross Up");
         if (crossUnderBasis)
-            sc.SetAlert(6, "Basis Cross Down");
+            sc.SetAlert(176, "Basis Cross Down");
     }
 }

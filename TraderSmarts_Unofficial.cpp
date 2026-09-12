@@ -4,18 +4,20 @@ SCDLLName("TraderSmarts Unofficial DLL")
 
 SCString ReadTextFile(SCStudyInterfaceRef sc, SCString FileLocation) {
     char TextBuffer[1000] = {};
-    int FileHandle = 1;
-    unsigned int *p_BytesRead = new unsigned int(0);
-    sc.OpenFile(FileLocation.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING, FileHandle);
-    sc.ReadFile(FileHandle, TextBuffer, 1000, p_BytesRead);
+    int FileHandle = 0;
+    unsigned int BytesRead = 0;
+    if (sc.OpenFile(FileLocation.GetChars(), n_ACSIL::FILE_MODE_OPEN_EXISTING_FOR_SEQUENTIAL_READING, FileHandle) == 0)
+        return "";
+    sc.ReadFile(FileHandle, TextBuffer, sizeof(TextBuffer) - 1, &BytesRead);
     sc.CloseFile(FileHandle);
+    TextBuffer[sizeof(TextBuffer) - 1] = '\0';
     return TextBuffer;
 }
 
 SCSFExport scsf_TraderSmarts(SCStudyInterfaceRef sc) {
     int i = sc.Index;
-
-    SCInputRef Input_FileName = sc.Input[0];
+    if (i < 1)
+        return;
     SCString txt = "";
     SCSubgraphRef Subgraph_Storage = sc.Subgraph[0];
     SCInputRef Input_DrawLabels = sc.Input[0];
