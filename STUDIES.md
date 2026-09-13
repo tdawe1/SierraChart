@@ -54,6 +54,9 @@ Status values: **Active** (built `_64.dll` committed in this repo) ·
 | `StatArbPairs.cpp` | `StatArbPairs` / Stat Arb Pairs | Pairs spread mean reversion: rolling OLS hedge, z-scored spread, correlation + half-life gates. Signal-only. | Source-only |
 | `GoldenCrossRegime.cpp` | `GoldenCrossRegime` / Golden Cross Regime | Long-only SMA golden-cross with extension guard and index bull-regime filter, death-cross exits, 1-ROC score. Signal-only. | Source-only |
 | `MondayDipBuy.cpp` | `MondayDipBuy` / Monday Dip Buy | Long-only Monday dip-buy above rising slow SMA, bounce-or-time exits, 1-ROC score. Signal-only. | Source-only |
+| `SignalExecutor.cpp` | `SignalExecutor` / Signal Executor | Indicator-triggered ACSIL executor: closed-bar trigger subgraphs to market entries, opposite-exit, attached stop/target; sim default | Active |
+| `ORBRetrace.cpp` | `ORBRetrace` / ORB Retrace (NQ) | Intraday OR breakout-retrace: close-confirmed break, VP-level retrace entry, OR-extreme stop, measured-move target, EOD flat. Signal-only. | Source-only |
+| `BacktestHarness.cpp` | `BacktestHarness` / Backtest Harness | File-driven study deployer: ADD/SET/WIRE/RECALC/REMOVE studies on its chart from a job file; zero GUI per study after bootstrap | Active |
 
 ## 2. `EdgeFul Indicators/` — session-level toolkit (all source-only, no DLLs)
 
@@ -158,18 +161,21 @@ NQ100 futures/index focus. All source-only.
 `ATRPositionSizing`, `BBDynamicSR`, `CumulativeDeltaDivDetector`, `DATR`,
 `FVG_and_News`, `IVRVRatio`, `IVRankPercentile`, `LinearRegression`,
 `MomoVolatility`, `RankCorrelationIndex`, `RiskRewardTool`, `SmashDay`,
-`TTMSqueeze`, `VIXSmartLevels`, `gcUserStudies` (`DOMNotes`, `FlowGauges`,
-`MomentumTails`), `reclaims`, `ColorThemeSwitcher` (from `~/Downloads` — two bit-identical copies, one kept). Source unknown — keep as binaries; if a source
+`TTMSqueeze`, `VIXSmartLevels`, `gcUserStudies_DOMNotes_64.dll`,
+`gcUserStudies_FlowGauges_64.dll`, `gcUserStudies_MomentumTails_64.dll`
+(`DOMNotes`, `FlowGauges`, `MomentumTails` studies), `reclaims`, `ColorThemeSwitcher` (from `~/Downloads` — two bit-identical copies, one kept). Source unknown — keep as binaries; if a source
 surfaces, add it to the tables above and flip the status.
 
 ## 8. Chart presets (not studies, but wired to studies above)
 
-`TO Studies.StdyCollct` (Olympus configs), `Roboto[.Backtest].StdyCollct`,
-`Professor Lines.StdyCollct`, `Footprint Deluxe.StdyCollct`, `ORB.StdyCollct`,
-`TO Footprint.Cht`, `TO Main.cht`, `ORB.Cht`, `Delta Heatmap.Cht`,
-`Piper_TPO.Cht`, `Professor RV Lines.cht`, `CSRobot.Cht`,
-`SC Chartbook E-MINI … SierraEdge.Cht` (×2 + backups),
-`FrozenTundra_Footprint_*.cht` + `frozen tundra footprint.Cht`.
+`TO Studies.StdyCollct` (Olympus configs), `Roboto.StdyCollct`,
+`Roboto Backtest.StdyCollct`, `Professor Lines.StdyCollct`,
+`Footprint Deluxe.StdyCollct`, `ORB.StdyCollct`, `TO Footprint.Cht`,
+`TO Main.Cht`, `ORB.Cht`, `Delta Heatmap.Cht`, `Piper_TPO.Cht`,
+`Professor RV Lines.Cht`, `CSRobot.Cht`,
+`SC Chartbook E-MINI SP500 SierraEdge.Cht`,
+`SC Chartbook E-MINI NASDAQ-100 SierraEdge.Cht` (×2; `.bak-*` copies are
+local backups — keep them out of the repo).
 
 ## Alert ID registry (chart-global — never reuse an ID across studies)
 |`check` flags any ID shared by two files. Within `TraderOracle.cpp` the two
@@ -194,9 +200,10 @@ Olympus generations also use distinct IDs. IDs 197–200 (freed by the
 | 199, 200 | `StatArbPairs.cpp` | Spread BUY / SELL |
 | 201, 202 | `GoldenCrossRegime.cpp` | Golden-cross BUY / death-cross EXIT |
 | 203, 204 | `MondayDipBuy.cpp` | Dip-buy BUY / bounce-or-time EXIT |
+| 205, 206 | `ORBRetrace.cpp` | ORB entry / exit (Buy leg = long entries + short exits) |
 
 - Tooling: `tools/sc.py`
-  (`new`/`catalog`/`install`/`check`/`sync`/`data`/`strategies`/`optimize`/`backtest`/`build`)
+  (`new`/`catalog`/`install`/`check`/`maintain`/`sync`/`data`/`strategies`/`optimize`/`confirm`/`backtest`/`build`)
   + `tools/README.md`. Run `python3 tools/sc.py check` before any Remote Build;
   deploy with `install`, backtests delegate to the upstream engine
   (`~/SierraChartStudies/backtest/`), never a local copy.
