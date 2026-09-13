@@ -135,7 +135,7 @@ SCSFExport scsf_SignalExecutor(SCStudyInterfaceRef sc)
         const bool isLong = pos.PositionQuantity > 0;
         if ((isLong && shortSig) || (!isLong && longSig))
         {
-            s_SCNewOrder exitOrder;
+            s_SCNewOrder exitOrder{};
             exitOrder.OrderQuantity = qty;
             exitOrder.OrderType = SCT_ORDERTYPE_MARKET;
             exitOrder.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED;
@@ -151,17 +151,19 @@ SCSFExport scsf_SignalExecutor(SCStudyInterfaceRef sc)
     if (pos.PositionQuantity != 0)
         return; // one position at a time = headless engine
 
+    // Long wins ties, exactly like signal_replay (if-first); the allow
+    // gates below then match the engine entry gate, so a disallowed side
+    // skips the bar instead of trading (never flips to the other side).
+    const bool allowLong = InAllowLong.GetYesNo() != 0;
+    const bool allowShort = InAllowShort.GetYesNo() != 0;
     int dir = 0;
-    if (longSig && shortSig)
-        dir = 1; // ties go long = headless signal_replay
-    else if (longSig && InAllowLong.GetYesNo())
+    if (longSig)
         dir = 1;
-    else if (shortSig && InAllowShort.GetYesNo())
+    else if (shortSig)
         dir = -1;
-    if (dir == 0)
+    if ((dir > 0 && !allowLong) || (dir < 0 && !allowShort))
         return;
-
-    s_SCNewOrder order;
+    s_SCNewOrder order{};
     order.OrderQuantity = InQuantity.GetInt();
     order.OrderType = SCT_ORDERTYPE_MARKET;
     order.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED;

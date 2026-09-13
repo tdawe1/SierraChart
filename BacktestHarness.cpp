@@ -276,12 +276,21 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
                 const int id = resolveId(sc, chart, shortName, ids, err);
                 if (id != 0)
                 {
-                    s_ChartStudySubgraphValues ref;
-                    sc.GetChartStudyInputChartStudySubgraphValues(chart, id, idx, ref);
-                    out.Format("VERIFY %s[%d] <- id=%d sg%d (chart %d)",
-                               shortName, idx, ref.StudyID, ref.SubgraphIndex,
-                               ref.ChartNumber);
-                    ok = true;
+                    s_ChartStudySubgraphValues ref{};
+                    ref.ChartNumber = 0;
+                    ref.StudyID = 0;
+                    ref.SubgraphIndex = -1;
+                    if (sc.GetChartStudyInputChartStudySubgraphValues(chart, id, idx, ref) == 0)
+                    {
+                        out.Format("VERIFY %s[%d]: read failed (bad input index?)", shortName, idx);
+                    }
+                    else
+                    {
+                        out.Format("VERIFY %s[%d] <- id=%d sg%d (chart %d)",
+                                   shortName, idx, ref.StudyID, ref.SubgraphIndex,
+                                   ref.ChartNumber);
+                        ok = true;
+                    }
                 }
                 else
                     out = err;

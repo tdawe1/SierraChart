@@ -54,9 +54,9 @@ Status values: **Active** (built `_64.dll` committed in this repo) ·
 | `StatArbPairs.cpp` | `StatArbPairs` / Stat Arb Pairs | Pairs spread mean reversion: rolling OLS hedge, z-scored spread, correlation + half-life gates. Signal-only. | Source-only |
 | `GoldenCrossRegime.cpp` | `GoldenCrossRegime` / Golden Cross Regime | Long-only SMA golden-cross with extension guard and index bull-regime filter, death-cross exits, 1-ROC score. Signal-only. | Source-only |
 | `MondayDipBuy.cpp` | `MondayDipBuy` / Monday Dip Buy | Long-only Monday dip-buy above rising slow SMA, bounce-or-time exits, 1-ROC score. Signal-only. | Source-only |
-| `SignalExecutor.cpp` | `SignalExecutor` / Signal Executor | Indicator-triggered ACSIL executor: closed-bar trigger subgraphs to market entries, opposite-exit, attached stop/target; sim default | Active |
+| `SignalExecutor.cpp` | `SignalExecutor` / Signal Executor | Indicator-triggered ACSIL executor: closed-bar trigger subgraphs to market entries, opposite-exit, attached stop/target; sim default. | Active |
 | `ORBRetrace.cpp` | `ORBRetrace` / ORB Retrace (NQ) | Intraday OR breakout-retrace: close-confirmed break, VP-level retrace entry, OR-extreme stop, measured-move target, EOD flat. Signal-only. | Source-only |
-| `BacktestHarness.cpp` | `BacktestHarness` / Backtest Harness | File-driven study deployer: ADD/SET/WIRE/RECALC/REMOVE studies on its chart from a job file; zero GUI per study after bootstrap | Active |
+| `BacktestHarness.cpp` | `BacktestHarness` / Backtest Harness | File-driven study deployer: ADD/SET/WIRE/VERIFY/RECALC/REMOVE studies on its chart from a job file; zero GUI per study after bootstrap. | Active |
 
 ## 2. `EdgeFul Indicators/` — session-level toolkit (all source-only, no DLLs)
 
