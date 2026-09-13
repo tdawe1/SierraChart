@@ -20,10 +20,10 @@ SCDLLName("Backtest Harness DLL")
 //   SETSTRING <short> <idx> <text...>
 //   WIRE <short> <idx> <srcShort> <subgraphIdx>
 //   VERIFY <short> <idx>          read back a wired input (study,subgraph)
+//   READINT/READFLOAT/READSTR <short> <idx>   read back a scalar input value
+//   USECHART <n>                  retarget all verbs to chart n (0 = own chart)
+//   SCAN                          list chart numbers with symbols (find NQ/ES/GC)
 //   RECALC
-// Result: "<job>.result" with one OK/ERR line per command. The job file is
-// deleted when claimed (exactly-once; a crash mid-job loses that job and
-// logs it on the next run via the orphaned .result absence — keep jobs small).
 //
 // Inputs are append-only once shipped -- never insert or reorder.
 
@@ -112,7 +112,10 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
         return;
     }
 
-    const int chart = sc.ChartNumber;
+    const int ownChart = sc.ChartNumber;
+    int& chartOverride = sc.GetPersistentInt(1); // USECHART target (0 = own chart)
+    const int chart = (chartOverride > 0) ? chartOverride : ownChart;
+     // NOTE: every verb below uses `chart`, so USECHART retargets all of them.
     std::map<std::string, int> ids;
     int okCount = 0, errCount = 0;
 
@@ -256,8 +259,9 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
         }
         else if (strcmp(verb, "WHOAMI") == 0)
         {
-            out.Format("chart=%d symbol=%s bars=%d", chart,
-                       sc.Symbol.GetChars(), sc.ArraySize);
+            SCString tsym = (chart != ownChart) ? sc.GetChartSymbol(chart) : sc.Symbol;
+            out.Format("chart=%d symbol=%s bars=%d target=%d tsym=%s", ownChart,
+                       sc.Symbol.GetChars(), sc.ArraySize, chart, tsym.GetChars());
             ok = true;
         }
         else if (strcmp(verb, "RECALC") == 0)
@@ -317,6 +321,71 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
             }
             else
                 out = "REMOVE syntax: REMOVE <short>";
+        }
+        else if (strcmp(verb, "USECHART") == 0)
+        {
+            int n = -1;
+            if (sscanf(rest, "%d", &n) == 1 && n >= 0 && n <= 256)
+            {
+                chartOverride = n; // takes effect on the NEXT job (chart is bound above)
+                out.Format("USECHART target=%d (applies next job)", n);
+                ok = true;
+            }
+            else
+                out = "USECHART syntax: USECHART <chart#> (0 = own chart)";
+        }
+        else if (strcmp(verb, "SCAN") == 0)
+        {
+            int found = 0;
+            SCString list;
+            for (int n = 1; n <= 200; ++n)
+            {
+                SCString sym = sc.GetChartSymbol(n);
+                if (sym.GetLength() > 0)
+                {
+                    SCString item;
+                    item.Format(" [%d]=%s", n, sym.GetChars());
+                    list += item;
+                    ++found;
+                }
+            }
+            out.Format("SCAN %d charts:%s", found, list.GetChars());
+            ok = true;
+        }
+        else if (strcmp(verb, "READINT") == 0 || strcmp(verb, "READFLOAT") == 0 || strcmp(verb, "READSTR") == 0)
+        {
+            char shortName[64] = {0};
+            int idx = 0;
+            if (sscanf(rest, "%63s %d", shortName, &idx) == 2)
+            {
+                SCString err;
+                const int id = resolveId(sc, chart, shortName, ids, err);
+                if (id != 0)
+                {
+                    if (strcmp(verb, "READINT") == 0)
+                    {
+                        int v = 0;
+                        if (sc.GetChartStudyInputInt(chart, id, idx, v)) { out.Format("READINT %s[%d] = %d", shortName, idx, v); ok = true; }
+                        else out.Format("READINT %s[%d]: read failed", shortName, idx);
+                    }
+                    else if (strcmp(verb, "READFLOAT") == 0)
+                    {
+                        double v = 0.0;
+                        if (sc.GetChartStudyInputFloat(chart, id, idx, v)) { out.Format("READFLOAT %s[%d] = %f", shortName, idx, v); ok = true; }
+                        else out.Format("READFLOAT %s[%d]: read failed", shortName, idx);
+                    }
+                    else
+                    {
+                        SCString v;
+                        if (sc.GetChartStudyInputString(chart, id, idx, v)) { out.Format("READSTR %s[%d] = %s", shortName, idx, v.GetChars()); ok = true; }
+                        else out.Format("READSTR %s[%d]: read failed", shortName, idx);
+                    }
+                }
+                else
+                    out = err;
+            }
+            else
+                out = "READ syntax: READINT|READFLOAT|READSTR <short> <idx>";
         }
         else
             out.Format("unknown verb '%s'", verb);
