@@ -1,2 +1,11 @@
 __pycache__/
 *.pyc
+
+# Third-party installer/vendor drops — blobs, never sources. Keep them out
+# of the repo (they also break diff-based review bots on sight).
+*.zip
+*.exe
+*.msi
+TDU*/
+UNZIP-ME-*/
+sierrachart-acsil-docs/
