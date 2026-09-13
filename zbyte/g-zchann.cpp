@@ -751,17 +751,17 @@ SCSFExport scsf_RollingZScoreChannel(SCStudyInterfaceRef sc)
 			&& AlertIndex >= 1)
 		{
 			if (CrossUpUpper)
-				sc.SetAlert(1, Index, "Break Above Upper");
+				sc.SetAlert(171, Index, "Break Above Upper");
 			if (CrossDnLower)
-				sc.SetAlert(2, Index, "Break Below Lower");
+				sc.SetAlert(172, Index, "Break Below Lower");
 			if (ReentryDn)
-				sc.SetAlert(3, Index, "Re-Entry From Above");
+				sc.SetAlert(173, Index, "Re-Entry From Above");
 			if (ReentryUp)
-				sc.SetAlert(4, Index, "Re-Entry From Below");
+				sc.SetAlert(174, Index, "Re-Entry From Below");
 			if (CrossUpBasis)
-				sc.SetAlert(5, Index, "Basis Cross Up");
+				sc.SetAlert(175, Index, "Basis Cross Up");
 			if (CrossDnBasis)
-				sc.SetAlert(6, Index, "Basis Cross Down");
+				sc.SetAlert(176, Index, "Basis Cross Down");
 		}
 	}
 }

@@ -2,6 +2,20 @@
 
 SCDLLName("Mancini Lines DLL") 
 
+static double ParseLevelPrice(const SCString& Token)
+{
+	// Leading numeric prefix of a level token. Returns 0 when the token
+	// holds no number ("(major)" after tokenizing) - callers skip those.
+	const char* Chars = Token.GetChars();
+	int Len = Token.GetLength();
+	int Start = 0;
+	while (Start < Len && !(isdigit((unsigned char)Chars[Start]) || Chars[Start] == '.' || Chars[Start] == '-' || Chars[Start] == '+'))
+		++Start;
+	if (Start >= Len || !isdigit((unsigned char)Chars[Start]))
+		return 0.0;
+	return atof(Chars + Start);
+}
+
 SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 {
 	SCGraphData srcChart;
@@ -81,7 +95,7 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 		SCString chtName = sc.GetChartSymbol(sc.ChartNumber);
 		if (chtName.Left(2) == "ES")
 		{
-	    	SCString desc, price;
+	    	SCString desc;
     		SCString sSupport = Input_Support.GetString();
     		std::vector<char*> tokens;
     		sSupport.Tokenize(", ", tokens);
@@ -89,10 +103,9 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 	    	{
                 if (s.IndexOf('-') != -1)
                     continue;
-	    		price = s.Left(4);
-	    		float pr = atof(price.GetChars());
-                Message.Format("Token: |%s|, Price: %f", s.GetChars(), pr);
-				sc.AddMessageToLog(Message, 1);
+	    		float pr = (float)ParseLevelPrice(s);
+                if (pr == 0.0f)
+                    continue;
 	    		s_UseTool Tool;
 	    		Tool.LineStyle = Subgraph_Support.LineStyle;
 	    		Tool.LineNumber = idx;
@@ -106,10 +119,9 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 	    		Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
 	    		Tool.AddMethod = UTAM_ADD_OR_ADJUST;
 	    		Tool.ShowPrice = 0;
-                sc.AddMessageToLog("2", 1);
                 Tool.Color = Subgraph_Support.PrimaryColor;
 				Tool.FontSize = Input_TextSize.GetInt();
-                Tool.Text.Format(Input_Text.GetString());
+                Tool.Text = Input_Text.GetString();
                 if (s.IndexOf('(') != -1)
                 {
 					SCString se = Input_Text.GetString();
@@ -117,10 +129,8 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
     			    Tool.Color = Subgraph_SupportMajor.PrimaryColor;
 					Tool.LineStyle = Subgraph_SupportMajor.LineStyle;
                     Tool.LineWidth = 2;
-                    sc.AddMessageToLog("3", 1);
                 }
     			sc.UseTool(Tool);
-                sc.AddMessageToLog("5", 1);
                 idx++;
     		}
 
@@ -131,11 +141,9 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 	    	{
                 if (s.IndexOf('-') != -1)
                     continue;
-                sc.AddMessageToLog("6", 1);
-	    		price = s.Left(4);
-	    		float pr = atof(price.GetChars());
-                Message.Format("Token: |%s|, Price: %f", s.GetChars(), pr);
-				sc.AddMessageToLog(Message, 1);
+	    		float pr = (float)ParseLevelPrice(s);
+                if (pr == 0.0f)
+                    continue;
 	    		s_UseTool Tool;
 	    		Tool.LineStyle = Subgraph_Resist.LineStyle;
 	    		Tool.LineNumber = idx;
@@ -149,10 +157,9 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
 	    		Tool.EndDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
 	    		Tool.AddMethod = UTAM_ADD_OR_ADJUST;
 	    		Tool.ShowPrice = 0;
-                sc.AddMessageToLog("7", 1);
                 Tool.Color = Subgraph_Resist.PrimaryColor;
 				Tool.FontSize = Input_TextSize.GetInt();
-                Tool.Text.Format(Input_Text.GetString());
+                Tool.Text = Input_Text.GetString();
                 if (s.IndexOf('(') != -1)
                 {
 					Tool.Color = Subgraph_ResistMajor.PrimaryColor;
@@ -162,13 +169,26 @@ SCSFExport scsf_Mancini_Lines(SCStudyInterfaceRef sc)
                     Tool.LineWidth = 2;
                 }
     			sc.UseTool(Tool);
-                sc.AddMessageToLog("8", 1);
                 idx++;
     		}
 	    }
         else
         {
-	    	sc.AddMessageToLog("You're NOT on an ES chart - please change to ES", 1);
-			sc.AddUserDrawnText("You're NOT on an ES chart - please change to ES", 100, 100, RGB(255, 0, 0), 16, 0, 0, 1, 0);
+			if (sc.ArraySize > 0)
+			{
+				s_UseTool WarnTool;
+				WarnTool.Clear();
+				WarnTool.ChartNumber = sc.ChartNumber;
+				WarnTool.Region = sc.GraphRegion;
+				WarnTool.DrawingType = DRAWING_TEXT;
+				WarnTool.LineNumber = 818001;
+				WarnTool.AddMethod = UTAM_ADD_OR_ADJUST;
+				WarnTool.BeginDateTime = sc.BaseDateTimeIn[sc.ArraySize - 1];
+				WarnTool.BeginValue = sc.Close[sc.ArraySize - 1];
+				WarnTool.Text = "You're NOT on an ES chart - please change to ES";
+				WarnTool.Color = RGB(255, 0, 0);
+				WarnTool.FontSize = 16;
+				sc.UseTool(WarnTool);
+			}
         }
 }

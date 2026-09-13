@@ -134,16 +134,17 @@ static const int PERSIST_KEY_STATE_POINTER   = 1;
 static const int PERSIST_KEY_NEXT_TO_COMMIT  = 2;  // first bar index whose S/R list mutations are NOT yet committed
 static const int PERSIST_KEY_LAST_ALERT_BAR  = 3;
 
-// Alert numbers (Sierra Chart alert sound numbers; messages mirror the Pine alertconditions)
-static const int ALERT_BULL_BREAKOUT     = 1;
-static const int ALERT_BEAR_BREAKOUT     = 2;
-static const int ALERT_BULL_REVERSAL     = 3;
-static const int ALERT_BEAR_REVERSAL     = 4;
-static const int ALERT_EXT_BULL_BREAKOUT = 5;
-static const int ALERT_EXT_BEAR_BREAKOUT = 6;
-static const int ALERT_EXT_BULL_REVERSAL = 7;
-static const int ALERT_EXT_BEAR_REVERSAL = 8;
-static const int ALERT_SQUEEZE_STARTED   = 9;
+// Alert numbers (Sierra Chart alert sound numbers; messages mirror the Pine alertconditions).
+// Block 161-169 per the repo alert registry in STUDIES.md - the 1-9 range collides with GodTrades.
+static const int ALERT_BULL_BREAKOUT     = 161;
+static const int ALERT_BEAR_BREAKOUT     = 162;
+static const int ALERT_BULL_REVERSAL     = 163;
+static const int ALERT_BEAR_REVERSAL     = 164;
+static const int ALERT_EXT_BULL_BREAKOUT = 165;
+static const int ALERT_EXT_BEAR_BREAKOUT = 166;
+static const int ALERT_EXT_BULL_REVERSAL = 167;
+static const int ALERT_EXT_BEAR_REVERSAL = 168;
+static const int ALERT_SQUEEZE_STARTED   = 169;
 
 struct s_SqueezeSRLevel
 {

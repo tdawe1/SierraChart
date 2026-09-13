@@ -2,11 +2,24 @@
 
 SCDLLName("MarketMaker.DLL")
 
-void DrawLines(SCString str, SCStudyInterfaceRef sc)
+static SCString TrimCopy(const SCString& In)
+{
+	const char* Chars = In.GetChars();
+	int Len = In.GetLength();
+	int Start = 0;
+	while (Start < Len && isspace((unsigned char)Chars[Start]))
+		++Start;
+	int End = Len;
+	while (End > Start && isspace((unsigned char)Chars[End - 1]))
+		--End;
+	return In.GetSubString(End - Start, Start);
+}
+
+void DrawLines(SCString str, SCStudyInterfaceRef sc, int LineBase)
 {
 	int idx = 1;
 
-	SCString sMQ1 = str.Trim();
+	SCString sMQ1 = TrimCopy(str);
 
 	std::vector<char*> tokens;
 	sMQ1.Tokenize(",", tokens);
@@ -33,7 +46,7 @@ void DrawLines(SCString str, SCStudyInterfaceRef sc)
 			Tool.Text.Format("%s", desc.GetChars());
 			Tool.FontSize = 9;
 			Tool.LineWidth = 1;
-			Tool.LineNumber = idx;
+			Tool.LineNumber = LineBase + idx;
 			Tool.Color = COLOR_LIME;
 
 			if (desc.Right(2) == "L1" || desc.Right(2) == "L2" || desc.Right(2) == "L3" || desc.Right(2) == "L4" || desc.Right(2) == "L5")
@@ -95,7 +108,7 @@ SCSFExport scsf_MoneyMaker_Levels(SCStudyInterfaceRef sc)
 		return;
 	}
 
-	int RecalcIntervalSec = Input_RecalcInterval.GetInt();
+	int RecalcIntervalSec = RecalcInterval.GetInt();
 	int& LastUpdated = sc.GetPersistentInt(9);
 	SCDateTime Now = sc.CurrentSystemDateTime;
 	int TimeInSec = Now.GetTimeInSeconds();
@@ -108,17 +121,17 @@ SCSFExport scsf_MoneyMaker_Levels(SCStudyInterfaceRef sc)
 	SCString s3 = Wednesday_MML.GetString();
 	SCString s4 = Thursday_MML.GetString();
 	SCString s5 = Friday_MML.GetString();
-	SCString s6 = Input_6_Lines.GetString();
-	SCString sa = sc.GetChartSymbol(sc.ChartNumber);
-	SCString chtName = sa.Format("$%s", sa.GetChars());
+	SCString s6 = Values.GetString();
 	if (s1 != "")
-		DrawLines(s1, sc);
+		DrawLines(s1, sc, 0);
 	if (s2 != "")
-		DrawLines(s2, sc);
+		DrawLines(s2, sc, 100);
 	if (s3 != "")
-		DrawLines(s3, sc);
+		DrawLines(s3, sc, 200);
 	if (s4 != "")
-		DrawLines(s4, sc);
+		DrawLines(s4, sc, 300);
 	if (s5 != "")
-		DrawLines(s5, sc);
+		DrawLines(s5, sc, 400);
+	if (s6 != "")
+		DrawLines(s6, sc, 500);
 }

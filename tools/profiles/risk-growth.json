@@ -1,0 +1,31 @@
+{
+  "_comment": "RISK PROFILE growth (ORB15 3% rule): 3% risk sizing off the stop, $3000 daily halt, $6000 DD halt, $9000 target, 30% best-day consistency. ES+NQ intraday. Copy and flip engine.regime per strategy (trend here for ORBRetrace).",
+  "strategy": "signal_replay",
+  "strategy_params": {},
+  "tick_size": 0.25,
+  "tick_value": 12.5,
+  "engine": {
+    "qty": 1,
+    "stop_ticks": 12,
+    "target_ticks": 24,
+    "fee_per_side": 2.1,
+    "slippage_ticks": 1,
+    "exec_mode": "next_open",
+    "allow_long": true,
+    "allow_short": true,
+    "exit_on_opposite": true,
+    "reverse_on_opposite": false,
+    "max_hold_bars": 0,
+    "account_size": 50000,
+    "risk_pct": 3.0,
+    "max_qty": 8,
+    "daily_loss_limit": 3000,
+    "max_drawdown_limit": 6000,
+    "profit_target": 9000,
+    "consistency_max_pct": 30.0,
+    "trade_windows": ["08:30-11:00", "13:30-15:00"],
+    "symbols": ["ES", "NQ"],
+    "max_trades_per_day": 5,
+    "regime": "trend"
+  }
+}
