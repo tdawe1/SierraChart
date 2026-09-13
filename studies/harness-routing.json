@@ -185,7 +185,7 @@
     "DTS_Scalper_display": {"class": "DISPLAY", "notes": "See DTS_Scalper TRIGGER entry for signals."},
     "EhlersDominantCycleStochRSI": {"class": "DISPLAY", "notes": "Oscillator; no discrete trigger."},
     "TLADe_GEX_Levels": {"class": "DISPLAY", "notes": "Gamma levels + BOS; levels, not triggers."},
-    "TrendArchitect": {"class": "DISPLAY", "notes": "Flagship zbyte trend system (Advanced subscription); trigger subgraphs unaudited - no backtest path yet."},
+     "TrendArchitect": {"dll": "TrendArchitect_64", "scsf": "scsf_TrendArchitect", "graph": "Trend Architect", "class": "TRIGGER", "longSg": 23, "shortSg": 24, "notes": "PRISM Buy/Sell (SG 23/24; MQ dots 25/26). Backtest ONLY in Bar-Close confirm mode (Input 62=1) - Live mode repaints intrabar. v9.3 P1s verified in source: inputs contiguous 0-89, strict-gate quorum + flip guard + calibrated Hurst all implemented."},
     "PropRiskOverlay": {"class": "DISPLAY", "notes": "Risk guardrail display; pairs with engine prop rules."},
     "InitialBalanceStatistics": {"class": "DISPLAY", "notes": "IB stats."},
     "InsideBarScanner": {"class": "DISPLAY", "notes": "Multi-chart scanner output; pick one variant per build."},
