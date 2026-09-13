@@ -1,0 +1,15 @@
+# CodeRabbit: keep automated reviews under the file-count limit by
+# excluding unreviewable bulk. Vendor/third-party code, build outputs,
+# chartbooks and archives carry no reviewable signal; study sources,
+# harness, tools and docs stay in scope.
+reviews:
+  path_filters:
+    - "!studies/vendor/**"
+    - "!zbyte/modules/**"
+    - "!zbyte/include/**"
+    - "!**/*.dll"
+    - "!**/*.Cht"
+    - "!**/*.cht"
+    - "!**/*.StdyCollct"
+    - "!**/*.zip"
+    - "!**/*.exe"
