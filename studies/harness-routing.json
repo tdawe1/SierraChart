@@ -34,7 +34,7 @@
       "dll": "ORBRetrace_64", "scsf": "scsf_ORBRetrace",
       "graph": "ORB Retrace (NQ)", "class": "TRIGGER",
       "longSg": 0, "shortSg": 1,
-      "notes": "Sibling PR2 adds ORBRetrace.cpp (this branch predates it); after rebase this entry tracks the merged source. Offline port orb_retrace is EXACT (16/16 defaults + 20/20 custom markers vs study). NQ 1-min VAL sweep replicates IS+OOS (PF 1.3-1.7). Retune protocol: REMOVE+ADD+SET+RECALC."
+      "notes": "Source ORBRetrace.cpp in tree; offline port orb_retrace is EXACT (16/16 defaults + 20/20 custom markers vs study). NQ 1-min VAL sweep replicates IS+OOS (PF 1.3-1.7). Retune protocol: REMOVE+ADD+SET+RECALC."
     },
     "Olympus": {
       "dll": "TraderOracle_64", "scsf": "scsf_Olympus",
