@@ -531,5 +531,258 @@ class StrategiesTests(unittest.TestCase):
         self.assertIn("signal_replay", buf.getvalue())
 
 
+class MaintainTests(unittest.TestCase):
+    README_FIXTURE = (
+        "check new install catalog sync data optimize confirm strategies backtest harness build maintain\n"
+        "catalog add\nbuild plan\nbuild stage\nbuild local\nbuild dll\nbuild verify\n"
+        "data validate\ndata list\ndata bars\n"
+    )
+    STUDIES_FIXTURE = (
+        "# STUDIES.md — fixture\n\n"
+        "## 7. Binary-only DLLs (no source in this repo — do not treat as buildable)\n\n"
+        "`Foo_64.dll` is vendored.\n\n"
+        "## 8. Chart presets (not studies, but wired to studies above)\n\n"
+        "`Bar.Cht` and `Baz.StdyCollct`.\n\n"
+        "## Alert ID registry (chart-global — never reuse an ID across studies)\n"
+    )
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.orig = (sc.ROOT, sc.NATIVE_DIRS, sc.STUDIES_MD, sc.VENDOR, sc.TOOLS)
+        sc.ROOT = self.tmp
+        sc.NATIVE_DIRS = [self.tmp]
+        sc.STUDIES_MD = self.tmp / "STUDIES.md"
+        sc.VENDOR = self.tmp / "studies" / "vendor"
+        sc.TOOLS = self.tmp / "tools"
+        (self.tmp / "studies").mkdir()
+        (self.tmp / "tools").mkdir()
+        write(sc.STUDIES_MD, self.STUDIES_FIXTURE)
+        write(sc.TOOLS / "README.md", self.README_FIXTURE)
+        write(self.tmp / "Foo_64.dll", "dll")
+        write(self.tmp / "Bar.Cht", "cht")
+        write(self.tmp / "Baz.StdyCollct", "collct")
+
+    def tearDown(self):
+        sc.ROOT, sc.NATIVE_DIRS, sc.STUDIES_MD, sc.VENDOR, sc.TOOLS = self.orig
+
+    def margs(self, **kw):
+        d = {"check": False, "rm_junk": False}
+        d.update(kw)
+        return type("A", (), d)()
+
+    def run_maintain(self, **kw):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = sc.cmd_maintain(self.margs(**kw))
+        return rc, buf.getvalue()
+
+    def test_clean_tree_passes(self):
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("0 error(s), 0 warning(s)", out)
+        self.assertNotIn("uncommitted", out)  # no .git in fixture
+
+    def test_junk_flagged_then_removed(self):
+        (self.tmp / "Page_files").mkdir()
+        write(self.tmp / "Page_files" / "x.js", "junk")
+        write(self.tmp / "dl [objectObject]", "junk")
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("Page_files", out)
+        self.assertIn("[objectObject]", out)
+        rc, out = self.run_maintain(rm_junk=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("REMOVED", out)
+        self.assertFalse((self.tmp / "Page_files").exists())
+        self.assertFalse((self.tmp / "dl [objectObject]").exists())
+        rc, out = self.run_maintain(check=True)
+        self.assertNotIn("Page_files", out)
+
+    def test_backup_and_lowercase_preset_warn(self):
+        write(self.tmp / "A.Cht.bak-1", "bak")
+        write(self.tmp / "b.cht", "cht")
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("A.Cht.bak-1", out)
+        self.assertIn("b.cht", out)
+
+    def test_empty_stub_warns(self):
+        write(self.tmp / "notes.md", "\n")
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("notes.md", out)
+
+    def test_readme_drift_is_error(self):
+        write(sc.TOOLS / "README.md",
+              self.README_FIXTURE.replace("strategies", ""))
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 1)
+        self.assertIn("ERROR: tools/README.md does not mention `strategies`", out)
+
+    def test_missing_study_ref_is_error(self):
+        write(sc.STUDIES_MD,
+              self.STUDIES_FIXTURE.replace("`Bar.Cht`", "`Nope.Cht`"))
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 1)
+        self.assertIn("`Nope.Cht`", out)
+
+    def test_unmatched_glob_ref_is_error(self):
+        write(sc.STUDIES_MD,
+              self.STUDIES_FIXTURE.replace("`Bar.Cht`", "`Ghost_*.Cht`"))
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 1)
+        self.assertIn("`Ghost_*.Cht`", out)
+
+    def test_glob_ref_matches_file(self):
+        write(sc.STUDIES_MD,
+              self.STUDIES_FIXTURE.replace(
+                  "`Bar.Cht` and `Baz.StdyCollct`",
+                  "`Bar.Cht` and `Baz*.StdyCollct`"))
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("0 error(s)", out)
+
+    def test_unreferenced_dll_warns(self):
+        write(self.tmp / "Extra_64.dll", "dll")
+        rc, out = self.run_maintain(check=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("Extra_64.dll", out)
+
+class ConfirmTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.orig_bt = sc.bt_call
+        self.calls = []
+        def fake(*argv):
+            self.calls.append(list(argv))
+            return 0
+        sc.bt_call = fake
+
+    def tearDown(self):
+        sc.bt_call = self.orig_bt
+
+    def cargs(self, **kw):
+        d = {"data": "d.csv", "params": "p.json", "out": str(self.tmp / "c"),
+             "tag": "t", "split": "frac:0.7", "train": "", "test": "",
+             "step": "", "embargo_days": "", "skip_walkforward": False}
+        d.update(kw)
+        return type("A", (), d)()
+
+    def test_sequence_is_run_split_walkforward(self):
+        rc = sc.cmd_confirm(self.cargs())
+        self.assertEqual(rc, 0)
+        self.assertEqual([c[0] for c in self.calls],
+                         ["run", "run", "walkforward"])
+        self.assertNotIn("--split", self.calls[0])
+        self.assertIn("--split", self.calls[1])
+        self.assertEqual(self.calls[1][self.calls[1].index("--split") + 1],
+                         "frac:0.7")
+
+    def test_fail_fast_stops_sequence(self):
+        calls = self.calls
+        def bad(*argv):
+            calls.append(list(argv))
+            return 1 if len(calls) == 2 else 0
+        sc.bt_call = bad
+        rc = sc.cmd_confirm(self.cargs())
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(len(calls), 2)
+
+    def test_skip_walkforward_runs_split_only(self):
+        rc = sc.cmd_confirm(self.cargs(skip_walkforward=True))
+        self.assertEqual(rc, 0)
+        self.assertEqual([c[0] for c in self.calls], ["run", "run"])
+
+    def test_missing_upstream_fails_without_calling(self):
+        orig = sc.UPSTREAM_BT
+        sc.UPSTREAM_BT = self.tmp / "nope-bt.py"
+        try:
+            rc = sc.cmd_confirm(self.cargs())
+        finally:
+            sc.UPSTREAM_BT = orig
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(self.calls, [])
+
+
+class ProfilesTests(unittest.TestCase):
+    NAMES = ("risk-conservative", "risk-balanced", "risk-growth")
+
+    def test_profiles_valid_graded_and_halted(self):
+        import json
+        profs = {}
+        for name in self.NAMES:
+            p = sc.TOOLS / "profiles" / (name + ".json")
+            profs[name] = json.loads(p.read_text(encoding="utf-8"))
+        risks = [profs[n]["engine"]["risk_pct"] for n in self.NAMES]
+        self.assertEqual(risks, [1.0, 2.0, 3.0])
+        for prof in profs.values():
+            eng = prof["engine"]
+            self.assertGreater(eng["daily_loss_limit"], 0)
+            self.assertGreater(eng["max_drawdown_limit"], 0)
+            self.assertGreater(eng["max_qty"], 0)
+            self.assertIn(eng["regime"], ("mean-reversion", "trend", "breakout"))
+
+class HarnessTests(unittest.TestCase):
+    def test_build_joins_and_skips_comments(self):
+        body = sc.build_harness_job(["# setup", "", "ADD Foo_64.scsf_Foo AS F",
+                                     "SETINT F 3 1", "RECALC"])
+        self.assertEqual(body, "ADD Foo_64.scsf_Foo AS F\nSETINT F 3 1\nRECALC\n")
+
+    def test_build_rejects_unknown_verb(self):
+        with self.assertRaises(ValueError):
+            sc.build_harness_job(["LAUNCH Foo"])
+
+    def test_build_rejects_empty(self):
+        with self.assertRaises(ValueError):
+            sc.build_harness_job(["# nothing here"])
+
+    def test_result_ok_needs_all_ok(self):
+        self.assertTrue(sc.harness_result_ok("OK ADD F id=7\nOK RECALC requested\n"))
+        self.assertFalse(sc.harness_result_ok("OK ADD F id=7\nERR WIRE bad\n"))
+        self.assertFalse(sc.harness_result_ok(""))
+
+    def test_compose_capture_probe_and_wire(self):
+        entry = {"dll": "Foo_64", "scsf": "scsf_Foo", "longSg": 0, "shortSg": 1}
+        probe, wire = sc.compose_capture(entry, "MeanReversionOU",
+                                         "C:\\SierraChart\\Data\\x.csv")
+        self.assertIn("RESOLVE MeanReversionOU", probe)
+        self.assertIn("RESOLVE BTE", probe)
+        self.assertNotIn("ADD Foo_64.scsf_Foo AS MeanReversionOU", probe)
+        self.assertIn("WIRE BTE 1 MeanReversionOU 0", wire)
+        self.assertIn("WIRE BTE 2 MeanReversionOU 1", wire)
+        self.assertIn("VERIFY BTE 1", wire)
+        self.assertIn("VERIFY BTE 2", wire)
+        self.assertEqual(wire[-1], "RECALC")
+
+    def test_parse_resolve_ids(self):
+        text = ("OK RESOLVE MeanReversionOU id=3\n"
+                "ERR unknown study 'BTE'\n"
+                "OK chart=13 symbol=YMU26-CBOT bars=2046\n")
+        self.assertEqual(sc.parse_resolve_ids(text), {"MeanReversionOU": 3})
+
+    def test_check_wire_accepts_match(self):
+        text = ("OK RESOLVE MeanReversionOU id=3\n"
+                "OK WIRE BTE[1] <- MeanReversionOU.sg0 done\n"
+                "OK VERIFY BTE[1] <- id=3 sg0 (chart 0)\n"
+                "OK VERIFY BTE[2] <- id=3 sg1 (chart 0)\n")
+        self.assertIsNone(sc.check_wire(text, "MeanReversionOU", 0, 1))
+
+    def test_check_wire_refuses_wrong_study(self):
+        text = ("OK RESOLVE MeanReversionOU id=3\n"
+                "OK VERIFY BTE[1] <- id=6 sg0 (chart 0)\n"
+                "OK VERIFY BTE[2] <- id=6 sg1 (chart 0)\n")
+        err = sc.check_wire(text, "MeanReversionOU", 0, 1)
+        self.assertIn("wiring mismatch", err)
+
+    def test_check_wire_refuses_missing_resolve(self):
+        text = "OK VERIFY BTE[1] <- id=6 sg0 (chart 0)\n"
+        self.assertIn("did not resolve",
+                      sc.check_wire(text, "MeanReversionOU", 0, 1))
+
+    def test_winpath_rejects_outside_data(self):
+        with self.assertRaises(ValueError):
+            sc.harness_winpath("/tmp/elsewhere.csv")
+
+
 if __name__ == "__main__":
     unittest.main()

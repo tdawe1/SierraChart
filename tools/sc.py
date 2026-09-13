@@ -11,6 +11,8 @@ One CLI for the study lifecycle in this repo (/home/user/SierraChart):
   check     static review: duplicate scsf_ exports, missing SCDLLName,
             multi-instance globals, unescaped webhook JSON, dead helpers,
             STUDIES.md coverage, vendor drift vs upstream checkouts
+  maintain  repo housekeeping audit: strays, docs drift, git hygiene
+            (--rm-junk deletes browser _files/ + [objectObject] accidents)
   sync      copy vendor reference files from upstream checkouts (or --check)
   data      validate/list TimeSlotValue-style CSV datasets; bars validates
             OHLC/signal exports against the backtester data contract
@@ -43,6 +45,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -1128,6 +1131,43 @@ def cmd_optimize(args):
     return 0
 
 
+def cmd_confirm(args):
+    """IS + OOS-split + walkforward confirmation (ORB15 discipline)."""
+    if not UPSTREAM_BT.exists():
+        print(f"error: upstream backtester not found at {UPSTREAM_BT}", file=sys.stderr)
+        return 1
+    data = str(Path(args.data).resolve())
+    params = str(Path(args.params).resolve())
+    outdir = Path(args.out)
+    tag = args.tag or "confirm"
+    steps = [
+        ["run", "--data", data, "--params", params,
+         "--out", str((outdir / "is").resolve()), "--tag", tag],
+        ["run", "--data", data, "--params", params,
+         "--out", str((outdir / "oos").resolve()), "--tag", tag + "-oos",
+         "--split", args.split],
+    ]
+    if not args.skip_walkforward:
+        wf = ["walkforward", "--data", data, "--params", params,
+              "--out", str((outdir / "wf").resolve()), "--tag", tag + "-wf"]
+        for flag in ("--train", "--test", "--step", "--embargo-days"):
+            val = getattr(args, flag.lstrip("-").replace("-", "_"), "")
+            if val:
+                wf += [flag, val]
+        steps.append(wf)
+    for cmd in steps:
+        rc = bt_call(*cmd)
+        if rc:
+            return rc
+    tail = "IS + OOS(%s)" % args.split
+    if not args.skip_walkforward:
+        tail += " + walkforward"
+    print(f"\nconfirm: {tail} in {outdir}")
+    print(f"next: pick the OOS run id (tag {tag}-oos) and gate shipping with")
+    print("  python3 tools/sc.py backtest promote --run <id>")
+    return 0
+
+
 def cmd_strategies(args):
     spath = BT_DIR / "strategies.py"
     if not spath.exists():
@@ -1167,6 +1207,379 @@ def cmd_backtest(args):
     print("$ " + " ".join(cmd))
     return subprocess.call(cmd, cwd=UPSTREAM_BT.parent)
 
+
+HARNESS_VERBS = ("ADD", "RESOLVE", "SETINT", "SETFLOAT", "SETSTRING",
+                 "WIRE", "VERIFY", "RECALC", "REMOVE", "WHOAMI")
+HARNESS_JOB_NAME = "bt_harness_job.txt"
+
+
+def harness_paths():
+    """(job_path, result_path) in the live Sierra Data dir."""
+    job = data_dir() / HARNESS_JOB_NAME
+    return job, job.with_name(job.name + ".result")
+
+
+def build_harness_job(cmds):
+    """Join + validate harness commands. Raises ValueError on bad verbs."""
+    lines = []
+    for c in cmds:
+        s = c.strip()
+        if not s or s.startswith("#"):
+            continue
+        verb = s.split(None, 1)[0].upper()
+        if verb not in HARNESS_VERBS:
+            raise ValueError(f"unknown harness verb {verb!r} (want one of "
+                             f"{', '.join(HARNESS_VERBS)})")
+        lines.append(s)
+    if not lines:
+        raise ValueError("no harness commands given")
+    return "\n".join(lines) + "\n"
+
+
+def harness_result_ok(text):
+    """True when every result line is OK (and at least one exists)."""
+    rows = [l for l in text.splitlines() if l.strip()]
+    return bool(rows) and all(l.startswith("OK ") for l in rows)
+
+
+def run_harness_job(cmds, timeout):
+    """Write a job file, wait for the .result. Returns (rc, text)."""
+    job, result = harness_paths()
+    body = build_harness_job(cmds)
+    if job.exists():
+        return 1, (f"stale job file {job} — harness busy or crashed; "
+                   f"remove it manually"), False
+    if result.exists():
+        result.unlink()
+    job.write_text(body, encoding="utf-8")
+    print(f"job -> {job} ({len(cmds)} command(s)); waiting up to "
+          f"{timeout}s for Sierra (Backtest Harness must be on a chart)")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if result.exists():
+            text = result.read_text(encoding="utf-8")
+            print(text, end="" if text.endswith("\n") else "\n")
+            ok = harness_result_ok(text)
+            print(f"result: {'OK' if ok else 'ERRORS'}")
+            return (0 if ok else 1), text, True
+        time.sleep(1)
+    return 1, (f"no result after {timeout}s — is Sierra running with "
+               f"the Backtest Harness study on a chart?"), False
+
+
+def cmd_harness(args):
+    if args.capture:
+        return cmd_harness_capture(args)
+    try:
+        rc, text, from_result = run_harness_job(args.cmd, args.timeout)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if rc != 0 and not from_result:
+        print(f"error: {text}", file=sys.stderr)
+    return rc
+
+
+ROUTING_PATH = ROOT / "studies" / "harness-routing.json"
+
+
+def load_routing():
+    return json.loads(ROUTING_PATH.read_text(encoding="utf-8"))
+
+
+def harness_winpath(local_csv):
+    """Data-dir CSV -> C:\\ path as Sierra sees it. Raises ValueError."""
+    p = Path(local_csv)
+    try:
+        rel = p.resolve().relative_to(data_dir().resolve())
+    except ValueError:
+        raise ValueError(f"--out must be inside the Sierra Data dir "
+                         f"({data_dir()})")
+    return "C:\\SierraChart\\Data\\" + "\\".join(rel.parts)
+
+
+RESOLVE_RE = re.compile(r"^OK RESOLVE (\S+) id=(\d+)\s*$")
+VERIFY_RE = re.compile(r"^OK VERIFY (\S+)\[(\d+)\] <- id=(\d+) sg(\d+)")
+
+
+def parse_resolve_ids(text):
+    """Short name -> study id for every OK RESOLVE line."""
+    ids = {}
+    for line in text.splitlines():
+        m = RESOLVE_RE.match(line.strip())
+        if m:
+            ids[m.group(1)] = int(m.group(2))
+    return ids
+
+
+def check_wire(text, cap, long_sg, short_sg):
+    """Refuse a wrong-study export: VERIFY must show BTE wired to the
+    resolved capture study's subgraphs. Returns an error string or None."""
+    ids = parse_resolve_ids(text)
+    capid = ids.get(cap)
+    if capid is None:
+        return f"capture study {cap!r} did not resolve"
+    seen = {}
+    for line in text.splitlines():
+        m = VERIFY_RE.match(line.strip())
+        if m and m.group(1) == "BTE":
+            seen[int(m.group(2))] = (int(m.group(3)), int(m.group(4)))
+    want = {1: (capid, long_sg), 2: (capid, short_sg)}
+    if seen != want:
+        return (f"wiring mismatch: BTE reads {seen}, want {want} "
+                f"— refusing a wrong-study export")
+    return None
+
+
+def compose_capture(entry, name, win_csv):
+    """Idempotent capture flow under one stable short name per study: a
+    repeat capture reuses the chart instance instead of stacking a
+    duplicate (whose default inputs can silently export zeros)."""
+    probe = ["WHOAMI", f"RESOLVE {name}", "RESOLVE BTE"]
+    wire = [f"RESOLVE {name}", "RESOLVE BTE",
+            f"SETSTRING BTE 0 {win_csv}",
+            f"WIRE BTE 1 {name} {entry['longSg']}",
+            f"WIRE BTE 2 {name} {entry['shortSg']}",
+            "VERIFY BTE 1", "VERIFY BTE 2", "RECALC"]
+    return probe, wire
+
+
+def cmd_harness_capture(args):
+    try:
+        routing = load_routing()
+        entry = routing["studies"][args.capture]
+    except (OSError, ValueError, KeyError):
+        print(f"error: unknown study {args.capture!r} "
+              f"(see studies/harness-routing.json)", file=sys.stderr)
+        return 2
+    if entry.get("class") != "TRIGGER" or not isinstance(
+            entry.get("longSg"), int) or not isinstance(
+            entry.get("shortSg"), int):
+        print(f"error: {args.capture!r} is not a wired TRIGGER study "
+              f"(audit its signal subgraphs first)", file=sys.stderr)
+        return 2
+    try:
+        win_csv = harness_winpath(args.out)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    out_csv = Path(args.out)
+    name = args.capture
+    probe, wire = compose_capture(entry, name, win_csv)
+    try:
+        _, probe_text, live = run_harness_job(probe, args.timeout)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if not live:
+        print(f"error: {probe_text}", file=sys.stderr)
+        return 1
+    have = parse_resolve_ids(probe_text)
+    adds = []
+    if name not in have:
+        adds.append(f"ADD {entry['dll']}.{entry['scsf']} AS {name}")
+    if "BTE" not in have:
+        adds.append("ADD BacktestExporter_64.scsf_BacktestExporter AS BTE")
+    if adds:
+        try:
+            rc, _, live = run_harness_job(adds + ["RECALC"], args.timeout)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        if not live or rc != 0:
+            print("error: study ADD failed", file=sys.stderr)
+            return 1
+        print(f"settle {args.settle}s for study registration...")
+        time.sleep(args.settle)
+    try:
+        rc2, wire_text, live = run_harness_job(wire, args.timeout)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if not live or rc2 != 0:
+        print(f"error: wire job failed:\n{wire_text}", file=sys.stderr)
+        return 1
+    err = check_wire(wire_text, name, entry["longSg"], entry["shortSg"])
+    if err:
+        print(f"error: {err}", file=sys.stderr)
+        return 1
+    print(f"settle {args.settle}s for export write...")
+    time.sleep(args.settle)
+    if not out_csv.exists():
+        print(f"error: no CSV at {out_csv} after recalc", file=sys.stderr)
+        return 1
+    # Quiescence: a heavy chart can still be writing when the settle
+    # elapses (a partial read once reported 11 signals from a file that
+    # settled at 3534). Wait for the size/mtime to stop moving, bounded.
+    try:
+        last_stat = (out_csv.stat().st_size, out_csv.stat().st_mtime_ns)
+    except OSError:
+        last_stat = None
+    waited = 0
+    while waited < args.timeout:
+        time.sleep(5)
+        waited += 5
+        try:
+            cur = (out_csv.stat().st_size, out_csv.stat().st_mtime_ns)
+        except OSError:
+            continue
+        if cur == last_stat:
+            break
+        last_stat = cur
+    else:
+        print("warning: export file still moving after "
+              f"{args.settle + args.timeout}s; validating anyway")
+    n, sig, first, last, errs = validate_bars_csv(out_csv)
+    for e in errs[:10]:
+        print(f"ERROR: {e}")
+    if errs:
+        return 1
+    print(f"OK {out_csv} ({n} bars, {sig} signal bars, {first} -> {last})")
+    if sig == 0:
+        print("note: zero signals is a verdict (silent study/window), "
+              "not a failure — wiring above proves the exporter read "
+              "the intended study")
+    return 0
+
+
+COMMIT_RE = re.compile(r"^[a-z][a-z0-9_/-]*: \S")
+JUNK_FILE_RES = (re.compile(r"\[objectObject\]"),)
+
+
+def root_junk():
+    """Unambiguous tool accidents at the repo root: browser page exports
+    (*_files/) and bad download names (*[objectObject]*)."""
+    found = [p for p in sorted(ROOT.glob("*_files")) if p.is_dir()]
+    try:
+        entries = sorted(ROOT.iterdir())
+    except OSError:
+        return found
+    found += [p for p in entries
+              if p.is_file() and any(r.search(p.name) for r in JUNK_FILE_RES)]
+    return found
+
+
+def cli_commands():
+    """Every invokable subcommand/action (e.g. 'build dll'), introspected
+    from the parser so the docs check cannot drift from the code."""
+    cmds = []
+    top = build_parser()._subparsers._group_actions[0].choices
+    for name, sp in sorted(top.items()):
+        cmds.append(name)
+        for act in sp._actions:
+            if isinstance(act, argparse._SubParsersAction):
+                cmds += [f"{name} {sub}" for sub in sorted(act.choices)]
+            elif act.dest == "action" and getattr(act, "choices", None):
+                cmds += [f"{name} {sub}" for sub in sorted(act.choices)]
+    return cmds
+
+
+def git_hygiene():
+    """(status lines, HEAD subject); (None, None) when git is unavailable."""
+    if not (ROOT / ".git").is_dir():
+        return None, None
+    try:
+        st = subprocess.run(["git", "status", "--short"], cwd=ROOT,
+                            capture_output=True, text=True, timeout=15)
+        hd = subprocess.run(["git", "log", "-1", "--format=%s"], cwd=ROOT,
+                            capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    if st.returncode or hd.returncode:
+        return None, None
+    return st.stdout.splitlines(), hd.stdout.strip()
+
+
+def cmd_maintain(args):
+    errors, warnings, infos = [], [], []
+
+    if getattr(args, "rm_junk", False) and not getattr(args, "check", False):
+        for p in root_junk():
+            try:
+                if p.is_dir():
+                    shutil.rmtree(p)
+                else:
+                    p.unlink()
+                print(f"REMOVED: {rel(p)}")
+            except OSError as e:
+                errors.append(f"{rel(p)}: could not remove ({e})")
+
+    for p in root_junk():
+        warnings.append(
+            f"{rel(p)}: tool accident — delete with maintain --rm-junk")
+    for p in sorted(ROOT.glob("*.bak*")):
+        warnings.append(
+            f"{rel(p)}: backup file — archive outside the repo or drop it")
+    for p in sorted(ROOT.glob("*.cht")):
+        warnings.append(
+            f"{p.name}: lowercase preset — Sierra writes .Cht; rename "
+            "for consistency")
+    for p in sorted(ROOT.rglob("*.md")):
+        if VENDOR in p.parents or not p.is_file():
+            continue
+        if not (read_text(p) or "").strip():
+            warnings.append(
+                f"{rel(p)}: empty placeholder doc — fill it in or delete it")
+
+    studies_text = read_text(STUDIES_MD) or ""
+    body = studies_text
+    start = studies_text.find("## 7.")
+    end = studies_text.find("## Alert ID registry")
+    if start != -1 and end != -1 and start < end:
+        body = studies_text[start:end]
+    for tok in sorted(set(re.findall(r"`([^`]+)`", body))):
+        tok = tok.strip()
+        if not tok or "…" in tok:
+            continue
+        suf = tok.rsplit(".", 1)[-1] if "." in tok else ""
+        if suf not in ("Cht", "cht", "StdyCollct", "dll", "cpp", "h", "csv"):
+            continue
+        if any(c in tok for c in "*?[]"):
+            if not list(ROOT.glob("**/" + tok)):
+                errors.append(
+                    f"STUDIES.md names `{tok}` but nothing in the repo matches it")
+        elif next(ROOT.rglob(tok), None) is None:
+            errors.append(
+                f"STUDIES.md names `{tok}` but no such file is in the repo")
+
+    bins = sorted(ROOT.rglob("*_64.dll")) + sorted(ROOT.rglob("*.Cht")) + \
+        sorted(ROOT.rglob("*.cht")) + sorted(ROOT.rglob("*.StdyCollct"))
+    for p in bins:
+        if ".bak" in p.name or VENDOR in p.parents:
+            continue
+        short = p.name.split("_64")[0] if p.suffix == ".dll" else p.name
+        if p.name not in studies_text and short not in studies_text:
+            warnings.append(
+                f"{rel(p)}: on-disk artifact not referenced in STUDIES.md §7/§8")
+
+    readme = read_text(TOOLS / "README.md") or ""
+    for cmd in cli_commands():
+        if cmd not in readme:
+            errors.append(
+                f"tools/README.md does not mention `{cmd}` — docs drifted "
+                "from the CLI")
+
+    status, head = git_hygiene()
+    if status:
+        shown = ", ".join(s.strip() for s in status[:6])
+        more = f" (+{len(status) - 6} more)" if len(status) > 6 else ""
+        infos.append(f"{len(status)} uncommitted path(s): {shown}{more}")
+    if head and not COMMIT_RE.match(head):
+        infos.append(
+            f"HEAD subject {head!r} breaks the `<area>: <summary>` "
+            "convention (see MAINTENANCE.md)")
+
+    for e in errors:
+        print(f"ERROR: {e}")
+    for w in warnings:
+        print(f"WARN:  {w}")
+    for i in infos:
+        print(f"INFO:  {i}")
+    print(f"\nmaintain: {len(errors)} error(s), {len(warnings)} warning(s), "
+          f"{len(infos)} note(s)")
+    if errors:
+        return 1
+    return 0
 
 def build_parser():
     p = argparse.ArgumentParser(description="SierraChart study tooling")
@@ -1236,6 +1649,22 @@ def build_parser():
                    help="write sweep.json only, run nothing")
     o.set_defaults(fn=cmd_optimize)
 
+    cf = sub.add_parser("confirm", help="IS + OOS-split + walkforward confirmation")
+    cf.add_argument("--data", required=True, help="bars/signal CSV")
+    cf.add_argument("--params", required=True, help="winner params JSON")
+    cf.add_argument("--out", required=True, help="output dir (is/ + oos/ + wf/)")
+    cf.add_argument("--tag", default="confirm", help="run tag prefix")
+    cf.add_argument("--split", default="frac:0.7",
+                    help="OOS split: frac:0.7 or 'YYYY-MM-DD[ HH:MM]'")
+    cf.add_argument("--train", default="", help="walkforward train window")
+    cf.add_argument("--test", default="", help="walkforward test window")
+    cf.add_argument("--step", default="", help="walkforward step")
+    cf.add_argument("--embargo-days", default="",
+                    help="walkforward embargo per test window")
+    cf.add_argument("--skip-walkforward", action="store_true",
+                    help="IS + split only, no walkforward")
+    cf.set_defaults(fn=cmd_confirm)
+
     st = sub.add_parser("strategies", help="list backtester strategies + params files")
     st.set_defaults(fn=cmd_strategies)
 
@@ -1245,6 +1674,20 @@ def build_parser():
                    help="args forwarded to backtest/bt.py, e.g. run --data …")
     # allow `backtest --help` to reach bt.py
     b.set_defaults(fn=cmd_backtest)
+
+    h = sub.add_parser("harness",
+                       help="run a Backtest Harness job on the live Sierra chart")
+    h.add_argument("--cmd", action="append", default=[],
+                   help="harness command line, e.g. --cmd 'ADD MeanReversionOU_64.scsf_MeanReversionOU AS MROU' (repeatable)")
+    h.add_argument("--timeout", type=int, default=60,
+                   help="seconds to wait for the .result file (default 60)")
+    h.add_argument("--capture", default="",
+                   help="capture a routed TRIGGER study end-to-end (name in studies/harness-routing.json)")
+    h.add_argument("--out", default="",
+                   help="local CSV path under the Sierra Data dir (with --capture)")
+    h.add_argument("--settle", type=int, default=25,
+                   help="seconds between capture phases for registration/export (default 25)")
+    h.set_defaults(fn=cmd_harness)
 
     bd = sub.add_parser("build", help="compile pipeline: deps, stage, local check, verify")
     bd_sub = bd.add_subparsers(dest="action", required=True)
@@ -1263,6 +1706,12 @@ def build_parser():
     ver = bd_sub.add_parser("verify", help="every study has a fresh DLL exporting its studies")
     ver.add_argument("--data-dir", help="Sierra Data dir (default $SC_DATA_DIR or beside ACS_Source)")
     ver.set_defaults(fn=cmd_build)
+    m = sub.add_parser("maintain", help="repo housekeeping audit: strays, docs drift, git hygiene")
+    m.add_argument("--check", action="store_true",
+                   help="report findings without changing anything (default)")
+    m.add_argument("--rm-junk", action="store_true",
+                   help="delete browser _files/ dirs + [objectObject] accidents, then audit")
+    m.set_defaults(fn=cmd_maintain)
     return p
 
 

@@ -149,6 +149,89 @@ Loop: export signals from the chart with `BacktestExporter.cpp` (vendor copy
 in `studies/vendor/sierrachart-studies/`), `run` the base, `sweep` the grid,
 confirm winners with `run --split` / `walkforward`, gate shipping with
 `promote --run <id>`. Full contract in `backtest/README.md` upstream.
+`harness` drives the live chart without GUI clicks: `BacktestHarness.cpp`
+(once on a chart) executes a job file — ADD/SET/WIRE/RECALC/REMOVE studies —
+and `harness` waits for the `.result` file. Routing (DLL/scsf/subgraphs per
+study) lives in `studies/harness-routing.json`:
+
+```
+python3 tools/sc.py harness --cmd "ADD MeanReversionOU_64.scsf_MeanReversionOU AS MROU" --cmd "RECALC"
+```
+
+`confirm` runs the ORB15 confirmation discipline in one shot — in-sample
+`run`, out-of-sample `run --split`, then `walkforward` (fail-fast), and
+points at `promote --run` for the shipping gate:
+
+```
+python3 tools/sc.py confirm --data X.csv --params winner.json --out runs/confirm1
+python3 tools/sc.py confirm --data X.csv --params winner.json --out runs/confirm1 --split 2024-01-01 --train 252 --test 63 --step 21
+python3 tools/sc.py confirm --data X.csv --params winner.json --out runs/confirm1 --skip-walkforward   # IS + split only
+```
+
+Risk profiles (`tools/profiles/risk-{conservative,balanced,growth}.json`,
+1%/2%/3% risk with scaled daily-loss and drawdown halts) plug into any
+step as the params file, e.g.
+`--params tools/profiles/risk-conservative.json`. Copy one and flip
+`engine.regime` per strategy (they ship as `trend` for ORBRetrace).
+
+## Automated loop: chart signals to verdict with no clicks
+
+`BacktestHarness.cpp` (on one chart per setup) executes job files from
+`harness`, so studies are added, wired, recalculated and exported without
+GUI work. Study routing (DLL/scsf/trigger subgraphs, 71 studies classified)
+lives in `studies/harness-routing.json`. Proven live: MeanReversionOU on
+YMU 10-min captured 2045 bars / 48 signals end-to-end.
+
+```
+python3 tools/sc.py harness --cmd "WHOAMI"   # worker? chart/symbol/bars
+# one-liner per routed TRIGGER study (two jobs + validation):
+python3 tools/sc.py harness --capture MeanReversionOU --out ~/.wine/drive_c/SierraChart/Data/bt_mrou.csv
+python3 tools/sc.py backtest run --data ~/.wine/drive_c/SierraChart/Data/bt_mrou.csv --params params.replay.json --split frac:0.7 --out runs/mrou
+```
+
+Session recipe (Sierra runs on a virtual display here): launch, and if jobs
+sit unclaimed past one bar, force one recalculation (Chart menu) to
+kick-start polling — new studies only calculate after a recalc/new bar.
+`VERIFY <short> <idx>` reads back live wiring; never trust an ADD return
+as an ID (it is a status — always RESOLVE). Keep exactly one harness per
+setup (two poll the same job file). Save the book after deploying so the
+harness persists across restarts. First poll after add/session start needs
+a recalc (or one new bar); steady-state claims land in seconds.
+Study IDs recycle after REMOVE: always re-VERIFY every wired input after
+removing a study (a dangling reference silently follows the next study
+to reuse the id). Retunes need REMOVE + ADD + SET + RECALC (recalcs on
+a live instance carry stale persistents).
+
+New TRIGGER study onboarding: audit its Buy/Sell subgraph slots, fill
+`longSg`/`shortSg` in the routing table, `harness --capture`, confirm
+signal bars > 0, then the standard `run`/`sweep`/`split`/`walkforward`/
+`promote` chain. ORDER studies go through `SignalExecutor.cpp` + the
+built-in replay backtest; DISPLAY/UTIL/BLOCKED classes have no backtest
+path by construction (see routing notes).
+
+Bulk data (months, not weeks): `bt.py scid` converts tick files to bar
+CSVs — pass the per-generation price divisor (legacy hundredths files:
+100; current SYM-YYYYMM points files: 1) and `--tz-offset -4` for
+chart-joins, then overlap-join a chart export before trusting a
+conversion (exact OHLC + volumes or it didn't happen). Long-window
+study signals without GUI chart surgery: port the study's entry math
+as a strategy adapter (`mrou_ou` pattern) and gate it on a bit-for-bit
+match against exported markers (48/48) before sweeping bulk data.
+
+## Maintenance (directory, commit log, docs)
+
+```
+python3 tools/sc.py maintain --check   # audit only: strays, docs drift, git hygiene
+python3 tools/sc.py maintain --rm-junk # also delete browser _files/ + [objectObject] accidents
+```
+
+Flags root strays (junk, `*.bak*` backups, lowercase `*.cht`, empty
+`*.md` stubs), errors on `STUDIES.md` §7/§8 artifact refs that resolve
+to nothing and on `tools/README.md` missing any CLI subcommand/action,
+and notes uncommitted paths + non-`<area>: <summary>` HEAD subjects.
+Full workflow (commit format, changelog policy, doc duties) in
+`MAINTENANCE.md`. Loop before each commit:
+`maintain --check` → `check` → `unittest`.
 
 ## Tests
 

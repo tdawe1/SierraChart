@@ -1,0 +1,213 @@
+{
+  "_comment": "Backtest routing: every study -> its automated backtest path. class TRIGGER with longSg/shortSg set is capture-ready (harness capture). TRIGGER with slots TBD needs a subgraph audit first. Classes: TRIGGER (discrete signals), ORDER (submits own orders; use built-in replay via SignalExecutor or its own logic), TOOL (backtest plumbing), DISPLAY (levels/lines/stats; not tradeable), UTIL (tape/DOM/nav/diagnostics; not backtestable), BLOCKED (no source). Subgraph indices are 0-based SCSubgraphRef slots.",
+  "harness": {
+    "dll": "BacktestHarness_64",
+    "scsf": "scsf_BacktestHarness",
+    "job_file_windows": "C:\\SierraChart\\Data\\bt_harness_job.txt"
+  },
+  "studies": {
+    "MeanReversionOU": {
+      "dll": "MeanReversionOU_64", "scsf": "scsf_MeanReversionOU",
+      "graph": "Mean Reversion OU", "class": "TRIGGER",
+      "notes": "Capture-proven live (48 signals). Offline port mrou_ou is 48/48 exact vs export; sweep it on bulk data. Signal-only."
+    },
+    "StatArbPairs": {
+      "dll": "StatArbPairs_64", "scsf": "scsf_StatArbPairs",
+      "graph": "Stat Arb Pairs", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Leg2 chart input; verify slot order before wiring. Offline port statarb_spread (approx tier, synthetic-tested); ES-NQ 24-combo sweep all negative."
+    },
+    "GoldenCrossRegime": {
+      "dll": "GoldenCrossRegime_64", "scsf": "scsf_GoldenCrossRegime",
+      "graph": "Golden Cross Regime", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Long-only; short leg is death-cross exit. Silent on YMU Sep window (no fresh cross)."
+    },
+    "MondayDipBuy": {
+      "dll": "MondayDipBuy_64", "scsf": "scsf_MondayDipBuy",
+      "graph": "Monday Dip Buy", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Long-only; short leg is exit."
+    },
+    "ORBRetrace": {
+      "dll": "ORBRetrace_64", "scsf": "scsf_ORBRetrace",
+      "graph": "ORB Retrace (NQ)", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "NQ opening-range retrace. Offline port orb_retrace is EXACT (16/16 defaults + 20/20 custom markers vs study). NQ 1-min VAL sweep replicates IS+OOS (PF 1.3-1.7). Retune protocol: REMOVE+ADD+SET+RECALC (recalcs on live instances carry stale persistents)."
+    },
+    "Olympus": {
+      "dll": "TraderOracle_64", "scsf": "scsf_Olympus",
+      "graph": "Olympus", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Consensus DotUp/DotDown 0/1. PROVEN DUPLICATE of GodTrades: independent captures byte-identical (494 bars). Assess once."
+    },
+    "DTS_Scalper": {
+      "dll": "TraderOracle_64", "scsf": "scsf_DTS_Scalper",
+      "graph": "DTS Scalper", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "DotUp/DotDown 0/1."
+    },
+    "GodTrades": {
+      "dll": "godtrades_64", "scsf": "scsf_GodTrades",
+      "graph": "God Trades", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Standard Buy/Sell Dot 0/1. PROVEN DUPLICATE of Olympus: independent captures byte-identical (494 bars). Assess once (grid: all negative, PF 0.58, 416 trades)."
+    },
+    "RabbitWatcher": {
+      "dll": "Renko_GOAT_64", "scsf": "scsf_RabbitWatcher",
+      "graph": "Rabbit Watcher", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Buy/Sell Hop subgraphs 0/1."
+    },
+    "RenkoGOAT": {
+      "dll": "Renko_GOAT_64", "scsf": "scsf_RenkoGOAT",
+      "graph": "Renko GOAT", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Standard Buy/Sell Dot subgraphs 0/1."
+    },
+    "VolImbRenko": {
+      "dll": "VolImbRenko_64", "scsf": "scsf_VolImbRenko",
+      "graph": "VolImb RENKO", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Gap DotUp/DotDown subgraphs 0/1 (alerts 181/182)."
+    },
+    "MarketCipherWannabe": {
+      "dll": "MarketCipherWannabe_64", "scsf": "scsf_MarketCipherWannabe",
+      "graph": "Market Cipher Wannabe", "class": "TRIGGER",
+      "longSg": 14, "shortSg": 15,
+      "notes": "Primary Buy/Sell circles 14/15. PROVEN DUPLICATE of VuManChu: captures byte-identical (98 bars). Assess once (grid: all OOS-negative)."
+    },
+    "VuManChuCipherBDivergences": {
+      "dll": "vumanchu1_64", "scsf": "scsf_VuManChuCipherBDivergences",
+      "graph": "VMC Cipher_B_Divergences", "class": "TRIGGER",
+      "longSg": 14, "shortSg": 15,
+      "notes": "Buy/Sell circles 14/15 (same layout lineage as MarketCipher)."
+    },
+    "TraderSmarts": {
+      "dll": "TraderSmarts_Unofficial_64", "scsf": "scsf_TraderSmarts",
+      "class": "DISPLAY",
+      "notes": "Level touch/wick alerts 26/27 only; sole subgraph is Storage (no trigger outputs) - no exporter path."
+    },
+    "SqueezeChannel": {
+      "dll": "SqueezeChannel_64", "scsf": "scsf_SqueezeChannel",
+      "graph": "Squeeze Channel", "class": "TRIGGER",
+      "longSg": 6, "shortSg": 7,
+      "notes": "Bull/Bear Breakout subgraphs 6/7 (reversals 8/9, extended 10-13)."
+    },
+    "RollingZScoreChannel": {
+      "dll": "c-zchann_64", "scsf": "scsf_RollingZScoreChannel",
+      "graph": "Rolling Z-Score Channel", "class": "TRIGGER",
+      "longSg": 9, "shortSg": 10,
+      "notes": "Re-Entry Up/Down subgraphs 9/10 (c-zchann build)."
+    },
+    "SCOFAbsorptionDetector": {
+      "dll": "SCOFA-v1206_64", "scsf": "scsf_SCOFAbsorptionDetector",
+      "graph": "SCOF Absorption Detector", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
+      "notes": "Absorption Bullish/Bearish 0/1 (sweeps 3/4). Needs footprint data (Numbers Bars)."
+    },
+    "OrionAbsorptionClimax": {
+      "dll": "AllStudies_64", "scsf": "scsf_OrionAbsorptionClimax",
+      "graph": "Orion Absorption Climax", "class": "TRIGGER",
+      "longSg": 2, "shortSg": 3,
+      "notes": "Trigger Long/Short subgraphs 2/3 (setups 0/1)."
+    },
+    "TheFlipper": {
+      "dll": "AllStudies_64", "scsf": "scsf_TheFlipper",
+      "graph": "The Flipper", "class": "TRIGGER",
+      "longSg": 1, "shortSg": 0,
+      "notes": "Bullish/Bearish Marker 1/0 (strong variants 2/3). Strong markers are persistent both-on states (86% bars), not events: engine churns to PF 0.58. Regular markers dead (PF 0.80, n=24)."
+    },
+    "SatyPivotRibbon": {
+      "dll": "SatyPivotRibbon_64", "scsf": "scsf_SatyPivotRibbon",
+      "graph": "Saty Pivot Ribbon", "class": "TRIGGER",
+      "longSg": 9, "shortSg": 10,
+      "notes": "Bullish/Bearish Conviction Arrow 9/10."
+    },
+    "AnnulationMiniRebond": {
+      "dll": "Annul_mini_rebond", "scsf": "scsf_AnnulationMiniRebond",
+      "graph": "Annulation Mini Rebond", "class": "ORDER",
+      "notes": "Vendor (jm-jo); submits own orders. Built-in replay path; verify DLL base."
+    },
+    "GoldBug": {
+      "dll": "TORobots_64", "scsf": "scsf_GoldBug",
+      "graph": "GoldBug", "class": "ORDER",
+      "notes": "Auto-trader, sending defaults OFF, halt enforced. Built-in replay path."
+    },
+    "SignalExecutor": {
+      "dll": "SignalExecutor_64", "scsf": "scsf_SignalExecutor",
+      "graph": "Signal Executor", "class": "ORDER",
+      "inputs": {
+        "0": "Enabled", "1": "[Signal] Long study subgraph",
+        "2": "[Signal] Short study subgraph", "3": "Allow Long Entries",
+        "4": "Allow Short Entries", "5": "Exit On Opposite Signal",
+        "6": "Attached Stop (ticks, 0=off)", "7": "Attached Target (ticks, 0=off)",
+        "8": "Order Quantity", "9": "Max Position",
+        "10": "Send Live To Broker (No = sim/replay only)"
+      },
+      "notes": "Generic bridge: any TRIGGER study to orders + built-in replay. Sim default."
+    },
+    "BacktestExporter": {
+      "dll": "BacktestExporter_64", "scsf": "scsf_BacktestExporter",
+      "graph": "Backtest Exporter", "class": "TOOL",
+      "inputs": {
+        "0": "Output CSV path", "1": "[Signal] Long study subgraph",
+        "2": "[Signal] Short study subgraph", "3": "[Delta] Max delta subgraph (0=off)",
+        "4": "[Delta] Min delta subgraph (0=off)", "5": "Append (No = overwrite)"
+      },
+      "notes": "17-col schema v2. Vendor copy; sync upstream, never edit."
+    },
+    "BacktestHarness": {
+      "dll": "BacktestHarness_64", "scsf": "scsf_BacktestHarness",
+      "graph": "Backtest Harness", "class": "TOOL",
+      "notes": "File-driven deployer. One per setup; kick-start with a recalc after add/session start."
+    },
+    "Mancini_Lines": {"class": "DISPLAY", "notes": "S/R lines; no tradeable event."},
+    "ManciniPlus": {"class": "DISPLAY", "notes": "S/R lines; no tradeable event."},
+    "Killpips_Levels": {"class": "DISPLAY", "notes": "Coded horizontals; no tradeable event."},
+    "MoneyMaker_Levels": {"class": "DISPLAY", "notes": "L1-L5/H1-H5 levels; no tradeable event."},
+    "LinearRegSlopeWithColor": {"class": "DISPLAY", "notes": "Slope histogram; no discrete trigger."},
+    "FancyNews": {"class": "DISPLAY", "notes": "News overlay; no tradeable event."},
+    "StreamSounds": {"class": "DISPLAY", "notes": "Sound alerts; no tradeable event."},
+    "DayOfWeekBias": {"class": "DISPLAY", "notes": "Weekday stats readout."},
+    "FirstHourTrend": {"class": "DISPLAY", "notes": "First-hour stats."},
+    "FourLineChartText": {"class": "DISPLAY", "notes": "Pinned text."},
+    "MidnightLevel": {"class": "DISPLAY", "notes": "Midnight level."},
+    "OpeningRangeSequence": {"class": "DISPLAY", "notes": "1H range stats."},
+    "PrevSessionCloseTracker": {"class": "DISPLAY", "notes": "Prior close tracker."},
+    "SundayOpenLevel": {"class": "DISPLAY", "notes": "Sunday reopen level."},
+    "TimeSlotValue": {"class": "DISPLAY", "notes": "CSV table renderer."},
+    "SierraSqueeze": {"class": "DISPLAY", "notes": "Squeeze indicator; no discrete trigger."},
+    "LindaMACD": {"class": "DISPLAY", "notes": "MACD variant; no discrete trigger."},
+    "WaddahExplosion": {"class": "DISPLAY", "notes": "Explosion indicator; no discrete trigger."},
+    "Linda_Anti_Setup": {"class": "DISPLAY", "notes": "Pattern display; no discrete trigger."},
+    "DTS_Scalper_display": {"class": "DISPLAY", "notes": "See DTS_Scalper TRIGGER entry for signals."},
+    "EhlersDominantCycleStochRSI": {"class": "DISPLAY", "notes": "Oscillator; no discrete trigger."},
+    "TLADe_GEX_Levels": {"class": "DISPLAY", "notes": "Gamma levels + BOS; levels, not triggers."},
+    "PropRiskOverlay": {"class": "DISPLAY", "notes": "Risk guardrail display; pairs with engine prop rules."},
+    "InitialBalanceStatistics": {"class": "DISPLAY", "notes": "IB stats."},
+    "InsideBarScanner": {"class": "DISPLAY", "notes": "Multi-chart scanner output; pick one variant per build."},
+    "Delta_Intensity": {"class": "DISPLAY", "notes": "Delta panel; pick one source per build."},
+    "OlympusOLD": {"class": "DISPLAY", "notes": "Legacy generation; superseded by Olympus."},
+    "SCOFA-v1203": {"class": "DISPLAY", "notes": "Legacy absorption version."},
+    "SCOFA-v1205": {"class": "DISPLAY", "notes": "Legacy absorption version."},
+    "TapeOnChart": {"class": "UTIL", "notes": "Time & sales tape."},
+    "MagicCharts": {"class": "UTIL", "notes": "Tick dot-matrix renderer."},
+    "PaceOfTape": {"class": "UTIL", "notes": "Ticks/sec gauge."},
+    "MarketDepthSizes": {"class": "UTIL", "notes": "DOM labels; needs depth data."},
+    "AverageLotSize": {"class": "UTIL", "notes": "DOM column; needs depth data."},
+    "PriceInLabel": {"class": "UTIL", "notes": "DOM label helper."},
+    "NumHighsLows": {"class": "UTIL", "notes": "Session counts overlay."},
+    "GoogleSheetsLevelsImporter": {"class": "UTIL", "notes": "External levels import."},
+    "JigsawExport": {"class": "UTIL", "notes": "Level export for Jigsaw."},
+    "AutoRiskReward": {"class": "UTIL", "notes": "Position drawing tool."},
+    "AutoBarPeriod": {"class": "UTIL", "notes": "Bar-period sync."},
+    "AutoNumBarsVolMult": {"class": "UTIL", "notes": "NumBars auto-tune."},
+    "AutoVbP": {"class": "UTIL", "notes": "VBP auto-tune."},
+    "ZoomToggle": {"class": "UTIL", "notes": "Keyboard zoom."},
+    "ChangeVolAtPriceMult": {"class": "UTIL", "notes": "VAP multiplier."},
+    "DiscordTradeAlert": {"class": "UTIL", "notes": "Webhook alerts, not-exec orders."},
+    "TraderOracleExamples": {"class": "UTIL", "notes": "GraphicsSettingsExample/test scratch."},
+    "BinaryOnlySet": {"class": "BLOCKED", "notes": "ATRPositionSizing, SmashDay, TTMSqueeze, IVRank, gcUserStudies_*, reclaims, ColorThemeSwitcher: no source. Replay-only via executor if they emit tradeable subgraphs."}
+  }
+}
