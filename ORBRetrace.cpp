@@ -4,6 +4,9 @@ SCDLLName("ORBRetrace")
 
 // ORBRetrace - intraday opening-range breakout-retracement system for
 // index futures (NQ-first). Port of dws-data/nas-orb-backtester rules:
+// All session minutes below are CHART-local (BarTime.GetHour/Minute, no ET
+// conversion); defaults assume an ET chart — on a Central-TZ chart 09:30
+// reads as 10:30 ET. Keep the chart timezone aligned with these inputs.
 // Opening range 09:30-09:45 ET; a 1m bar CLOSE beyond the OR extreme plus
 // a tick threshold confirms the breakout (no wick entries); entries arm
 // on the breakout bar and fill only when a LATER bar retraces to touch a
@@ -29,7 +32,7 @@ SCDLLName("ORBRetrace")
 namespace
 {
 
-// Minutes since midnight for a bar time.
+// Minutes since midnight for a bar time (chart-local; NOT converted to ET).
 inline int BarMinutes(SCDateTime BarTime)
 {
     return BarTime.GetHour() * 60 + BarTime.GetMinute();
@@ -113,11 +116,11 @@ SCSFExport scsf_ORBRetrace(SCStudyInterfaceRef sc)
         InEnabled.Name = "Enabled";
         InEnabled.SetYesNo(1);
 
-        InORStartMin.Name = "OR Start (min since midnight ET)";
+        InORStartMin.Name = "OR Start (min since midnight, chart time)";
         InORStartMin.SetInt(570);
         InORStartMin.SetIntLimits(0, 1439);
 
-        InOREndMin.Name = "OR End (min since midnight ET)";
+        InOREndMin.Name = "OR End (min since midnight, chart time)";
         InOREndMin.SetInt(585);
         InOREndMin.SetIntLimits(1, 1440);
 
@@ -129,11 +132,11 @@ SCSFExport scsf_ORBRetrace(SCStudyInterfaceRef sc)
         InVPLevel.SetInt(0);
         InVPLevel.SetIntLimits(0, 2);
 
-        InEntryCutoffMin.Name = "Entry Cutoff (min since midnight ET)";
+        InEntryCutoffMin.Name = "Entry Cutoff (min since midnight, chart time)";
         InEntryCutoffMin.SetInt(720);
         InEntryCutoffMin.SetIntLimits(0, 1439);
 
-        InEODFlatMin.Name = "EOD Force-Flat (min since midnight ET)";
+        InEODFlatMin.Name = "EOD Force-Flat (min since midnight, chart time)";
         InEODFlatMin.SetInt(955);
         InEODFlatMin.SetIntLimits(0, 1439);
 
