@@ -40,6 +40,7 @@ SCSFExport scsf_SignalExecutor(SCStudyInterfaceRef sc)
 
     if (sc.SetDefaults)
     {
+        sc.GetPersistentInt(0) = -1; // lastActionBar: no bar has acted yet (persistents init 0 = bar 0)
         sc.GraphName = "Signal Executor";
         sc.StudyDescription = "Market entries from indicator trigger subgraphs (closed-bar), opposite-signal exit, attached stop/target. Sim default.";
         sc.GraphRegion = 0;

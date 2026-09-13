@@ -21,11 +21,21 @@ SCDLLName("Backtest Harness DLL")
 //   WIRE <short> <idx> <srcShort> <subgraphIdx>
 //   VERIFY <short> <idx>          read back a wired input (study,subgraph)
 //   READINT/READFLOAT/READSTR <short> <idx>   read back a scalar input value
-//   USECHART <n>                  retarget all verbs to chart n (0 = own chart)
+//   USECHART <n>                  retarget following verbs to chart n for the
+//                                 rest of THIS job only (0 = own chart; the
+//                                 override resets to 0 when the job ends, so a
+//                                 stale target can never leak into the next job)
 //   SCAN                          list chart numbers with symbols (find NQ/ES/GC)
+//   LIVE <short> <idx> <0|1>      the ONLY way to write a live-trading input:
+//                                 Signal Executor[10] ("Send Live To Broker"),
+//                                 GoldBug[1] ("SendOrders"). SETINT/SETFLOAT
+//                                 refuse nonzero writes to those slots.
 //   RECALC
 //
-// Inputs are append-only once shipped -- never insert or reorder.
+// Safety: the harness never enables live trading by accident — live inputs
+// require the explicit LIVE verb (logged). SETSTRING input 0 of
+// BacktestExporter is the CSV output path: jobs run operator-trusted, so
+// never point it outside the Sierra Data dir.
 
 namespace
 {
@@ -46,6 +56,20 @@ int resolveId(SCStudyInterfaceRef sc, int chart, const std::string& name,
 void resultLine(FILE* f, bool ok, const SCString& msg)
 {
     fprintf(f, "%s %s\n", ok ? "OK" : "ERR", msg.GetChars());
+}
+
+// Live-trading inputs that generic SET verbs must never arm: enabling real
+// orders stays a deliberate, auditable LIVE-verb action.
+bool isLiveSlot(SCStudyInterfaceRef sc, int chart, int studyId, int idx)
+{
+    if (idx != 10 && idx != 1)
+        return false;
+    const SCString name = sc.GetStudyNameFromChart(chart, studyId);
+    if (idx == 10 && name.Compare("Signal Executor", 0) == 0)
+        return true;
+    if (idx == 1 && name.Compare("GoldBug", 0) == 0)
+        return true;
+    return false;
 }
 } // namespace
 
@@ -114,8 +138,9 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
 
     const int ownChart = sc.ChartNumber;
     int& chartOverride = sc.GetPersistentInt(1); // USECHART target (0 = own chart)
-    const int chart = (chartOverride > 0) ? chartOverride : ownChart;
-     // NOTE: every verb below uses `chart`, so USECHART retargets all of them.
+    int chart = (chartOverride > 0) ? chartOverride : ownChart;
+    // NOTE: every verb below uses `chart`, so USECHART retargets the rest of
+    // this job. chartOverride resets to 0 at job end (job-scoped safety).
     std::map<std::string, int> ids;
     int okCount = 0, errCount = 0;
 
@@ -196,12 +221,17 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
                 const int id = resolveId(sc, chart, shortName, ids, err);
                 if (id != 0)
                 {
-                    if (strcmp(verb, "SETINT") == 0)
-                        sc.SetChartStudyInputInt(chart, id, idx, static_cast<int>(val));
+                    if (val != 0.0 && isLiveSlot(sc, chart, id, idx))
+                        out.Format("%s %s[%d]: live-trading input refused (use LIVE verb)", verb, shortName, idx);
                     else
-                        sc.SetChartStudyInputFloat(chart, id, idx, val);
-                    out.Format("%s %s[%d] done", verb, shortName, idx);
-                    ok = true;
+                    {
+                        if (strcmp(verb, "SETINT") == 0)
+                            sc.SetChartStudyInputInt(chart, id, idx, static_cast<int>(val));
+                        else
+                            sc.SetChartStudyInputFloat(chart, id, idx, val);
+                        out.Format("%s %s[%d] done", verb, shortName, idx);
+                        ok = true;
+                    }
                 }
                 else
                     out = err;
@@ -327,12 +357,47 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
             int n = -1;
             if (sscanf(rest, "%d", &n) == 1 && n >= 0 && n <= 256)
             {
-                chartOverride = n; // takes effect on the NEXT job (chart is bound above)
-                out.Format("USECHART target=%d (applies next job)", n);
-                ok = true;
+                if (n != 0 && sc.GetChartSymbol(n).GetLength() == 0)
+                    out.Format("USECHART %d: no such chart (SCAN to list)", n);
+                else
+                {
+                    chartOverride = n;
+                    chart = (n > 0) ? n : ownChart; // immediate for the rest of this job
+                    out.Format("USECHART target=%d (this job only; resets to 0 at job end)", n);
+                    ok = true;
+                }
             }
             else
                 out = "USECHART syntax: USECHART <chart#> (0 = own chart)";
+        }
+        else if (strcmp(verb, "LIVE") == 0)
+        {
+            char shortName[64] = {0};
+            int idx = 0, flag = -1;
+            if (sscanf(rest, "%63s %d %d", shortName, &idx, &flag) == 3 && (flag == 0 || flag == 1))
+            {
+                SCString err;
+                const int id = resolveId(sc, chart, shortName, ids, err);
+                if (id != 0)
+                {
+                    if (!isLiveSlot(sc, chart, id, idx))
+                        out.Format("LIVE %s[%d]: not a live-trading input (use SETINT)", shortName, idx);
+                    else
+                    {
+                        sc.SetChartStudyInputInt(chart, id, idx, flag);
+                        SCString msg;
+                        msg.Format("BacktestHarness: LIVE %s[%d] <- %d on chart %d (explicit operator action)",
+                                   shortName, idx, flag, chart);
+                        sc.AddMessageToLog(msg.GetChars(), 1);
+                        out.Format("LIVE %s[%d] <- %d done (logged)", shortName, idx, flag);
+                        ok = true;
+                    }
+                }
+                else
+                    out = err;
+            }
+            else
+                out = "LIVE syntax: LIVE <short> <idx> <0|1>";
         }
         else if (strcmp(verb, "SCAN") == 0)
         {
@@ -397,6 +462,7 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
             ++errCount;
     }
 
+    chartOverride = 0; // job-scoped USECHART: never leak a retarget into the next job
     fclose(rf);
     SCString done;
     done.Format("BacktestHarness: job done (%d ok, %d err) -> %s", okCount, errCount, resultPath.GetChars());

@@ -209,8 +209,12 @@ SCSFExport scsf_StatArbPairs(SCStudyInterfaceRef sc)
         return;
     }
 
-    const int hedgeLen = InHedgeLookback.GetInt();
-    const int zLen = InZLookback.GetInt();
+    int hedgeLen = InHedgeLookback.GetInt();
+    int zLen = InZLookback.GetInt();
+    // Clamp at read time: harness SETINT bypasses the editor limits, and the
+    // stack cache below holds 500 entries (SetDefaults caps both at 500).
+    if (hedgeLen < 10) hedgeLen = 10; if (hedgeLen > 500) hedgeLen = 500;
+    if (zLen < 10) zLen = 10; if (zLen > 500) zLen = 500;
     const int need = hedgeLen > zLen ? hedgeLen : zLen;
     if (i < need - 1)
     {

@@ -1,7 +1,14 @@
 # DLL provenance (generated 2026-09-13 by binary audit of Data/*_64.dll)
-# Covers remote-build outputs and vendor drops. Regenerate after any rebuild:
-# sha256sum per DLL + objdump import/export scan (see PR review notes).
-# Result: no DLL imports network APIs (WINHTTP/WININET/URLMON/WS2_32).
+# Covers remote-build outputs and vendor drops. Regenerate after any rebuild.
+# Method (reproduce from the Sierra install dir — NOT from this repo, which
+# only tracks a few root DLLs):
+#   sha256sum Data/*_64.dll
+#   for f in Data/*_64.dll; do echo "== $f"; objdump -p "$f" | grep -iE 'DLL Name.*(WINHTTP|WININET|URLMON|WS2_32)'; done
+#   for f in Data/*_64.dll; do echo "== $f"; strings -n 8 "$f" | grep -iE 'discord\.com/api/webhooks|hooks\.slack'; done
+# UNVERIFIED from this repo alone: hashes below are truncated to 12 hex chars
+# and no scan log is archived here, so treat the `network` column as an
+# operator-recorded spot result, not proof. Archive the full sha256sum +
+# objdump/strings output with the next rebuild before claiming `none`.
 # DiscordAlerts carries no embedded webhook (URL is a runtime input; errors when unset).
 
 | DLL | SHA-256 (12) | studies | network |

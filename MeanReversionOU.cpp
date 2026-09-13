@@ -315,7 +315,7 @@ SCSFExport scsf_MeanReversionOU(SCStudyInterfaceRef sc)
         HoldLimit = hold;
         SgBuy[i] = sc.Low[i] - sc.TickSize;
         if (sc.IsNewBar(i))
-            sc.AlertWithMessage(197, "MeanReversionOU BUY");
+            sc.AlertWithMessage(191, "MeanReversionOU BUY");
     }
     else if (shortOk && z >= entryZ)
     {
@@ -324,6 +324,6 @@ SCSFExport scsf_MeanReversionOU(SCStudyInterfaceRef sc)
         HoldLimit = hold;
         SgSell[i] = sc.High[i] + sc.TickSize;
         if (sc.IsNewBar(i))
-            sc.AlertWithMessage(198, "MeanReversionOU SELL");
+            sc.AlertWithMessage(192, "MeanReversionOU SELL");
     }
 }

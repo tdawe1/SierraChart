@@ -179,9 +179,10 @@ local backups — keep them out of the repo).
 
 ## Alert ID registry (chart-global — never reuse an ID across studies)
 |`check` flags any ID shared by two files. Within `TraderOracle.cpp` the two
-Olympus generations also use distinct IDs. IDs 197–200 (freed by the
-2026-09-12 renumbering) are now owned by `MeanReversionOU.cpp` /
-`StatArbPairs.cpp`; 201–204 by `GoldenCrossRegime.cpp` / `MondayDipBuy.cpp`.
+Olympus generations also use distinct IDs. 191–192 are free (TORobots GoldBug
+VolImb/FVG 197/198 sit in a commented-out block — do not reactivate them
+without renumbering). 197–200 no longer collide: 199/200 belong to
+`StatArbPairs.cpp`, 201–204 to `GoldenCrossRegime.cpp` / `MondayDipBuy.cpp`.
 | ID(s) | Owner | Signal |
 |---|---|---|
 | 5–8, 12–13, 17–24 | `godtrades.cpp` | God Trades signals (5/6 = BUY/SELL, 7/8 on NQ symbols) |
@@ -194,9 +195,9 @@ Olympus generations also use distinct IDs. IDs 197–200 (freed by the
 | 185, 186 | `TraderOracle.cpp` Olympus VolImb legs | BUY / SELL |
 | 187, 188 | `TraderOracle.cpp` Olympus OLD | BUY / SELL |
 | 189, 190 | `TraderOracle.cpp` Olympus OLD VolImb legs | BUY / SELL |
+| 191, 192 | `MeanReversionOU.cpp` | Mean-reversion BUY / SELL |
 | 193, 194 | `Renko_GOAT.cpp` | Renko GOAT BUY / SELL |
-| 195, 196 | `TORobots.cpp` GoldBug | Standard BUY / SELL |
-| 197, 198 | `MeanReversionOU.cpp` | Mean-reversion BUY / SELL |
+| 195, 196 | `TORobots.cpp` GoldBug | Standard BUY / SELL (197/198 VolImb/FVG block is commented out) |
 | 199, 200 | `StatArbPairs.cpp` | Spread BUY / SELL |
 | 201, 202 | `GoldenCrossRegime.cpp` | Golden-cross BUY / death-cross EXIT |
 | 203, 204 | `MondayDipBuy.cpp` | Dip-buy BUY / bounce-or-time EXIT |

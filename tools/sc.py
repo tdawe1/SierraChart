@@ -769,12 +769,18 @@ def do_catalog_add(src, desc, status):
         return 2
     section, group = CATALOG_SECTIONS[key]
     studies_text = read_text(STUDIES_MD) or ""
-    if src.name in studies_text:
-        print(f"error: {src.name} is already registered in STUDIES.md",
-              file=sys.stderr)
-        return 1
     exports = study_exports(text)
     graphs = GRAPHNAME_RE.findall(text)
+    row_without_card = False
+    if src.name in studies_text:
+        probe = f"{src.name} — {graphs[0]}" if graphs else src.name
+        if js_escape(probe) in (read_text(ROOT / "studies" / "index.html") or ""):
+            print(f"error: {src.name} is already registered in STUDIES.md",
+                  file=sys.stderr)
+            return 1
+        # A crash between the two file writes left a row without a card:
+        # fall through and write just the missing card (stays retryable).
+        row_without_card = True
     names = exports or ["—"]
     rows = []
     for i, exp in enumerate(names):
@@ -793,7 +799,8 @@ def do_catalog_add(src, desc, status):
         print(f"error: no table rows under {section} in STUDIES.md", file=sys.stderr)
         return 1
     # Validate the index.html slot BEFORE mutating either file: a failed
-    # add must leave no row-without-card behind (and must stay retryable).
+    # add must leave no row-without-card behind. A crash between the two
+    # writes below is repaired on retry (row detected, card rewritten).
     index_path = ROOT / "studies" / "index.html"
     index_text = read_text(index_path) or ""
     marker = '{g:"' + group + '"'
@@ -806,8 +813,9 @@ def do_catalog_add(src, desc, status):
     if end < 0:
         print("error: malformed DATA group in studies/index.html", file=sys.stderr)
         return 1
-    lines[last + 1:last + 1] = rows
-    STUDIES_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if not row_without_card:
+        lines[last + 1:last + 1] = rows
+        STUDIES_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
     title = f"{src.name} — {graphs[0]}" if graphs else src.name
     scsfs = ", ".join(f"scsf_{e}" for e in exports) if exports else "—"
     card = (f',\n["{js_escape(title)}","{js_escape(scsfs)}",'
