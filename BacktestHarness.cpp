@@ -20,12 +20,22 @@ SCDLLName("Backtest Harness DLL")
 //   SETSTRING <short> <idx> <text...>
 //   WIRE <short> <idx> <srcShort> <subgraphIdx>
 //   VERIFY <short> <idx>          read back a wired input (study,subgraph)
+//   READINT/READFLOAT/READSTR <short> <idx>   read back a scalar input value
+//   USECHART <n>                  retarget following verbs to chart n for the
+//                                 rest of THIS job only (0 = own chart; the
+//                                 override resets to 0 when the job ends, so a
+//                                 stale target can never leak into the next job)
+//   SCAN                          list chart numbers with symbols (find NQ/ES/GC)
+//   LIVE <short> <idx> <0|1>      the ONLY way to write a live-trading input:
+//                                 Signal Executor[10] ("Send Live To Broker"),
+//                                 GoldBug[1] ("SendOrders"). SETINT/SETFLOAT
+//                                 refuse nonzero writes to those slots.
 //   RECALC
-// Result: "<job>.result" with one OK/ERR line per command. The job file is
-// deleted when claimed (exactly-once; a crash mid-job loses that job and
-// logs it on the next run via the orphaned .result absence — keep jobs small).
 //
-// Inputs are append-only once shipped -- never insert or reorder.
+// Safety: the harness never enables live trading by accident — live inputs
+// require the explicit LIVE verb (logged). SETSTRING input 0 of
+// BacktestExporter is the CSV output path: jobs run operator-trusted, so
+// never point it outside the Sierra Data dir.
 
 namespace
 {
@@ -46,6 +56,20 @@ int resolveId(SCStudyInterfaceRef sc, int chart, const std::string& name,
 void resultLine(FILE* f, bool ok, const SCString& msg)
 {
     fprintf(f, "%s %s\n", ok ? "OK" : "ERR", msg.GetChars());
+}
+
+// Live-trading inputs that generic SET verbs must never arm: enabling real
+// orders stays a deliberate, auditable LIVE-verb action.
+bool isLiveSlot(SCStudyInterfaceRef sc, int chart, int studyId, int idx)
+{
+    if (idx != 10 && idx != 1)
+        return false;
+    const SCString name = sc.GetStudyNameFromChart(chart, studyId);
+    if (idx == 10 && name.Compare("Signal Executor", 0) == 0)
+        return true;
+    if (idx == 1 && name.Compare("GoldBug", 0) == 0)
+        return true;
+    return false;
 }
 } // namespace
 
@@ -112,7 +136,11 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
         return;
     }
 
-    const int chart = sc.ChartNumber;
+    const int ownChart = sc.ChartNumber;
+    int& chartOverride = sc.GetPersistentInt(1); // USECHART target (0 = own chart)
+    int chart = (chartOverride > 0) ? chartOverride : ownChart;
+    // NOTE: every verb below uses `chart`, so USECHART retargets the rest of
+    // this job. chartOverride resets to 0 at job end (job-scoped safety).
     std::map<std::string, int> ids;
     int okCount = 0, errCount = 0;
 
@@ -193,12 +221,17 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
                 const int id = resolveId(sc, chart, shortName, ids, err);
                 if (id != 0)
                 {
-                    if (strcmp(verb, "SETINT") == 0)
-                        sc.SetChartStudyInputInt(chart, id, idx, static_cast<int>(val));
+                    if (val != 0.0 && isLiveSlot(sc, chart, id, idx))
+                        out.Format("%s %s[%d]: live-trading input refused (use LIVE verb)", verb, shortName, idx);
                     else
-                        sc.SetChartStudyInputFloat(chart, id, idx, val);
-                    out.Format("%s %s[%d] done", verb, shortName, idx);
-                    ok = true;
+                    {
+                        if (strcmp(verb, "SETINT") == 0)
+                            sc.SetChartStudyInputInt(chart, id, idx, static_cast<int>(val));
+                        else
+                            sc.SetChartStudyInputFloat(chart, id, idx, val);
+                        out.Format("%s %s[%d] done", verb, shortName, idx);
+                        ok = true;
+                    }
                 }
                 else
                     out = err;
@@ -256,8 +289,9 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
         }
         else if (strcmp(verb, "WHOAMI") == 0)
         {
-            out.Format("chart=%d symbol=%s bars=%d", chart,
-                       sc.Symbol.GetChars(), sc.ArraySize);
+            SCString tsym = (chart != ownChart) ? sc.GetChartSymbol(chart) : sc.Symbol;
+            out.Format("chart=%d symbol=%s bars=%d target=%d tsym=%s", ownChart,
+                       sc.Symbol.GetChars(), sc.ArraySize, chart, tsym.GetChars());
             ok = true;
         }
         else if (strcmp(verb, "RECALC") == 0)
@@ -276,12 +310,21 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
                 const int id = resolveId(sc, chart, shortName, ids, err);
                 if (id != 0)
                 {
-                    s_ChartStudySubgraphValues ref;
-                    sc.GetChartStudyInputChartStudySubgraphValues(chart, id, idx, ref);
-                    out.Format("VERIFY %s[%d] <- id=%d sg%d (chart %d)",
-                               shortName, idx, ref.StudyID, ref.SubgraphIndex,
-                               ref.ChartNumber);
-                    ok = true;
+                    s_ChartStudySubgraphValues ref{};
+                    ref.ChartNumber = 0;
+                    ref.StudyID = 0;
+                    ref.SubgraphIndex = -1;
+                    if (sc.GetChartStudyInputChartStudySubgraphValues(chart, id, idx, ref) == 0)
+                    {
+                        out.Format("VERIFY %s[%d]: read failed (bad input index?)", shortName, idx);
+                    }
+                    else
+                    {
+                        out.Format("VERIFY %s[%d] <- id=%d sg%d (chart %d)",
+                                   shortName, idx, ref.StudyID, ref.SubgraphIndex,
+                                   ref.ChartNumber);
+                        ok = true;
+                    }
                 }
                 else
                     out = err;
@@ -309,6 +352,106 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
             else
                 out = "REMOVE syntax: REMOVE <short>";
         }
+        else if (strcmp(verb, "USECHART") == 0)
+        {
+            int n = -1;
+            if (sscanf(rest, "%d", &n) == 1 && n >= 0 && n <= 256)
+            {
+                if (n != 0 && sc.GetChartSymbol(n).GetLength() == 0)
+                    out.Format("USECHART %d: no such chart (SCAN to list)", n);
+                else
+                {
+                    chartOverride = n;
+                    chart = (n > 0) ? n : ownChart; // immediate for the rest of this job
+                    out.Format("USECHART target=%d (this job only; resets to 0 at job end)", n);
+                    ok = true;
+                }
+            }
+            else
+                out = "USECHART syntax: USECHART <chart#> (0 = own chart)";
+        }
+        else if (strcmp(verb, "LIVE") == 0)
+        {
+            char shortName[64] = {0};
+            int idx = 0, flag = -1;
+            if (sscanf(rest, "%63s %d %d", shortName, &idx, &flag) == 3 && (flag == 0 || flag == 1))
+            {
+                SCString err;
+                const int id = resolveId(sc, chart, shortName, ids, err);
+                if (id != 0)
+                {
+                    if (!isLiveSlot(sc, chart, id, idx))
+                        out.Format("LIVE %s[%d]: not a live-trading input (use SETINT)", shortName, idx);
+                    else
+                    {
+                        sc.SetChartStudyInputInt(chart, id, idx, flag);
+                        SCString msg;
+                        msg.Format("BacktestHarness: LIVE %s[%d] <- %d on chart %d (explicit operator action)",
+                                   shortName, idx, flag, chart);
+                        sc.AddMessageToLog(msg.GetChars(), 1);
+                        out.Format("LIVE %s[%d] <- %d done (logged)", shortName, idx, flag);
+                        ok = true;
+                    }
+                }
+                else
+                    out = err;
+            }
+            else
+                out = "LIVE syntax: LIVE <short> <idx> <0|1>";
+        }
+        else if (strcmp(verb, "SCAN") == 0)
+        {
+            int found = 0;
+            SCString list;
+            for (int n = 1; n <= 200; ++n)
+            {
+                SCString sym = sc.GetChartSymbol(n);
+                if (sym.GetLength() > 0)
+                {
+                    SCString item;
+                    item.Format(" [%d]=%s", n, sym.GetChars());
+                    list += item;
+                    ++found;
+                }
+            }
+            out.Format("SCAN %d charts:%s", found, list.GetChars());
+            ok = true;
+        }
+        else if (strcmp(verb, "READINT") == 0 || strcmp(verb, "READFLOAT") == 0 || strcmp(verb, "READSTR") == 0)
+        {
+            char shortName[64] = {0};
+            int idx = 0;
+            if (sscanf(rest, "%63s %d", shortName, &idx) == 2)
+            {
+                SCString err;
+                const int id = resolveId(sc, chart, shortName, ids, err);
+                if (id != 0)
+                {
+                    if (strcmp(verb, "READINT") == 0)
+                    {
+                        int v = 0;
+                        if (sc.GetChartStudyInputInt(chart, id, idx, v)) { out.Format("READINT %s[%d] = %d", shortName, idx, v); ok = true; }
+                        else out.Format("READINT %s[%d]: read failed", shortName, idx);
+                    }
+                    else if (strcmp(verb, "READFLOAT") == 0)
+                    {
+                        double v = 0.0;
+                        if (sc.GetChartStudyInputFloat(chart, id, idx, v)) { out.Format("READFLOAT %s[%d] = %f", shortName, idx, v); ok = true; }
+                        else out.Format("READFLOAT %s[%d]: read failed", shortName, idx);
+                    }
+                    else
+                    {
+                        SCString v;
+                        if (sc.GetChartStudyInputString(chart, id, idx, v)) { out.Format("READSTR %s[%d] = %s", shortName, idx, v.GetChars()); ok = true; }
+                        else out.Format("READSTR %s[%d]: read failed", shortName, idx);
+                    }
+                }
+                else
+                    out = err;
+            }
+            else
+                out = "READ syntax: READINT|READFLOAT|READSTR <short> <idx>";
+        }
         else
             out.Format("unknown verb '%s'", verb);
 
@@ -319,6 +462,7 @@ SCSFExport scsf_BacktestHarness(SCStudyInterfaceRef sc)
             ++errCount;
     }
 
+    chartOverride = 0; // job-scoped USECHART: never leak a retarget into the next job
     fclose(rf);
     SCString done;
     done.Format("BacktestHarness: job done (%d ok, %d err) -> %s", okCount, errCount, resultPath.GetChars());

@@ -26,6 +26,7 @@ CPP_B = '#include "sierrachart.h"\nSCDLLName("B")\nSCSFExport scsf_Beta(SCStudyI
 class CheckTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.orig = (sc.ROOT, sc.NATIVE_DIRS, sc.STUDIES_MD, sc.VENDOR)
         sc.ROOT = self.tmp
         sc.NATIVE_DIRS = [self.tmp]
@@ -162,6 +163,7 @@ class CheckTests(unittest.TestCase):
 class BuildTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.orig = (sc.ROOT, sc.NATIVE_DIRS, sc.STUDIES_MD, sc.VENDOR)
         sc.ROOT = self.tmp
         sc.NATIVE_DIRS = [self.tmp]
@@ -239,6 +241,7 @@ class BuildTests(unittest.TestCase):
 class NewTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.orig = (sc.ROOT, sc.NATIVE_DIRS, sc.TEMPLATE)
         sc.ROOT = self.tmp
         sc.NATIVE_DIRS = [self.tmp]
@@ -277,6 +280,7 @@ class NewTests(unittest.TestCase):
 class DataTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def test_valid_csv(self):
         p = self.tmp / "s.csv"
@@ -326,6 +330,7 @@ NOVA_CPP = ('#include "sierrachart.h"\nSCDLLName("Nova DLL")\n'
 class InstallTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.orig = (sc.ROOT, sc.NATIVE_DIRS)
         sc.ROOT = self.tmp
         sc.NATIVE_DIRS = [self.tmp]
@@ -377,6 +382,7 @@ class InstallTests(unittest.TestCase):
 class CatalogTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.orig = (sc.ROOT, sc.NATIVE_DIRS, sc.STUDIES_MD)
         sc.ROOT = self.tmp
         sc.NATIVE_DIRS = [self.tmp]
@@ -414,6 +420,7 @@ class CatalogTests(unittest.TestCase):
 class OptimizeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def test_parse_grid_val(self):
         self.assertEqual(sc.parse_grid_val("8,12"), [8, 12])
@@ -482,6 +489,7 @@ class OptimizeTests(unittest.TestCase):
 class BarsTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def test_valid_bars(self):
         p = self.tmp / "b.csv"
@@ -518,8 +526,7 @@ class BarsTests(unittest.TestCase):
 
 
 class StrategiesTests(unittest.TestCase):
-    @unittest.skipIf(not (Path("/home/user/SierraChartStudies/backtest")
-                          / "strategies.py").exists(),
+    @unittest.skipIf(not (sc.BT_DIR / "strategies.py").exists(),
                      "upstream backtester checkout missing")
     def test_lists_strategies(self):
         import io
@@ -533,9 +540,10 @@ class StrategiesTests(unittest.TestCase):
 
 class MaintainTests(unittest.TestCase):
     README_FIXTURE = (
-        "check new install catalog sync data optimize confirm strategies backtest harness build maintain\n"
-        "catalog add\nbuild plan\nbuild stage\nbuild local\nbuild dll\nbuild verify\n"
-        "data validate\ndata list\ndata bars\n"
+        "`check` `new` `install` `catalog` `sync` `data` `optimize` `confirm` "
+        "`strategies` `backtest` `harness` `build` `maintain`\n"
+        "`catalog add`\n`build plan`\n`build stage`\n`build local`\n`build dll`\n"
+        "`build verify`\n`data validate`\n`data list`\n`data bars`\n"
     )
     STUDIES_FIXTURE = (
         "# STUDIES.md — fixture\n\n"
@@ -548,6 +556,7 @@ class MaintainTests(unittest.TestCase):
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.orig = (sc.ROOT, sc.NATIVE_DIRS, sc.STUDIES_MD, sc.VENDOR, sc.TOOLS)
         sc.ROOT = self.tmp
         sc.NATIVE_DIRS = [self.tmp]
@@ -651,6 +660,7 @@ class MaintainTests(unittest.TestCase):
 class ConfirmTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.orig_bt = sc.bt_call
         self.calls = []
         def fake(*argv):
@@ -721,6 +731,14 @@ class ProfilesTests(unittest.TestCase):
             self.assertGreater(eng["max_drawdown_limit"], 0)
             self.assertGreater(eng["max_qty"], 0)
             self.assertIn(eng["regime"], ("mean-reversion", "trend", "breakout"))
+            self.assertLess(eng["daily_loss_limit"], eng["max_drawdown_limit"])
+            self.assertLess(eng["max_drawdown_limit"], eng["profit_target"])
+        dailies = [profs[n]["engine"]["daily_loss_limit"] for n in self.NAMES]
+        draws = [profs[n]["engine"]["max_drawdown_limit"] for n in self.NAMES]
+        targets = [profs[n]["engine"]["profit_target"] for n in self.NAMES]
+        qtys = [profs[n]["engine"]["max_qty"] for n in self.NAMES]
+        self.assertEqual([dailies, draws, targets, qtys],
+                         [sorted(dailies), sorted(draws), sorted(targets), sorted(qtys)])
 
 class HarnessTests(unittest.TestCase):
     def test_build_joins_and_skips_comments(self):

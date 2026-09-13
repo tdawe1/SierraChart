@@ -9,6 +9,7 @@
     "MeanReversionOU": {
       "dll": "MeanReversionOU_64", "scsf": "scsf_MeanReversionOU",
       "graph": "Mean Reversion OU", "class": "TRIGGER",
+      "longSg": 0, "shortSg": 1,
       "notes": "Capture-proven live (48 signals). Offline port mrou_ou is 48/48 exact vs export; sweep it on bulk data. Signal-only."
     },
     "StatArbPairs": {
@@ -33,7 +34,7 @@
       "dll": "ORBRetrace_64", "scsf": "scsf_ORBRetrace",
       "graph": "ORB Retrace (NQ)", "class": "TRIGGER",
       "longSg": 0, "shortSg": 1,
-      "notes": "NQ opening-range retrace. Offline port orb_retrace is EXACT (16/16 defaults + 20/20 custom markers vs study). NQ 1-min VAL sweep replicates IS+OOS (PF 1.3-1.7). Retune protocol: REMOVE+ADD+SET+RECALC (recalcs on live instances carry stale persistents)."
+      "notes": "Source ORBRetrace.cpp in tree; offline port orb_retrace is EXACT (16/16 defaults + 20/20 custom markers vs study). NQ 1-min VAL sweep replicates IS+OOS (PF 1.3-1.7). Retune protocol: REMOVE+ADD+SET+RECALC."
     },
     "Olympus": {
       "dll": "TraderOracle_64", "scsf": "scsf_Olympus",
@@ -68,8 +69,8 @@
     "VolImbRenko": {
       "dll": "VolImbRenko_64", "scsf": "scsf_VolImbRenko",
       "graph": "VolImb RENKO", "class": "TRIGGER",
-      "longSg": 0, "shortSg": 1,
-      "notes": "Gap DotUp/DotDown subgraphs 0/1 (alerts 181/182)."
+      "longSg": 2, "shortSg": 3,
+      "notes": "Volume Imbalance Up/Down subgraphs 2/3 (alerts 181/182). SG 0/1 are unwritten DotUp/DotDown placeholders — do not capture them."
     },
     "MarketCipherWannabe": {
       "dll": "MarketCipherWannabe_64", "scsf": "scsf_MarketCipherWannabe",
@@ -125,9 +126,9 @@
       "notes": "Bullish/Bearish Conviction Arrow 9/10."
     },
     "AnnulationMiniRebond": {
-      "dll": "Annul_mini_rebond", "scsf": "scsf_AnnulationMiniRebond",
+      "dll": "Annul_mini_rebond_v9.3.2_64", "scsf": "scsf_AnnulationMiniRebond",
       "graph": "Annulation Mini Rebond", "class": "ORDER",
-      "notes": "Vendor (jm-jo); submits own orders. Built-in replay path; verify DLL base."
+      "notes": "Vendor (jm-jo) v9.3.2, source-only in tree: build (build dll) before replay; submits own orders."
     },
     "GoldBug": {
       "dll": "TORobots_64", "scsf": "scsf_GoldBug",
@@ -184,6 +185,7 @@
     "DTS_Scalper_display": {"class": "DISPLAY", "notes": "See DTS_Scalper TRIGGER entry for signals."},
     "EhlersDominantCycleStochRSI": {"class": "DISPLAY", "notes": "Oscillator; no discrete trigger."},
     "TLADe_GEX_Levels": {"class": "DISPLAY", "notes": "Gamma levels + BOS; levels, not triggers."},
+     "TrendArchitect": {"dll": "TrendArchitect_64", "scsf": "scsf_TrendArchitect", "graph": "Trend Architect", "class": "TRIGGER", "longSg": 23, "shortSg": 24, "notes": "PRISM Buy/Sell (SG 23/24; MQ dots 25/26). Exporter capture: Bar-Close confirm mode (Input 62=1) is mode-independent (reads bars 0..n-2 post-recalc). SignalExecutor pairing: Live mode (Input 62=0) + closed-bar gate — in confirm mode TA posts bar k markers to SG[k-1] only when bar k+1 calculates, so the latest-bar executor reads 0 and misses entries. v9.3 P1s verified in source: inputs contiguous 0-89, strict-gate quorum + flip guard + calibrated Hurst all implemented."},
     "PropRiskOverlay": {"class": "DISPLAY", "notes": "Risk guardrail display; pairs with engine prop rules."},
     "InitialBalanceStatistics": {"class": "DISPLAY", "notes": "IB stats."},
     "InsideBarScanner": {"class": "DISPLAY", "notes": "Multi-chart scanner output; pick one variant per build."},
@@ -207,7 +209,6 @@
     "ZoomToggle": {"class": "UTIL", "notes": "Keyboard zoom."},
     "ChangeVolAtPriceMult": {"class": "UTIL", "notes": "VAP multiplier."},
     "DiscordTradeAlert": {"class": "UTIL", "notes": "Webhook alerts, not-exec orders."},
-    "TraderOracleExamples": {"class": "UTIL", "notes": "GraphicsSettingsExample/test scratch."},
-    "BinaryOnlySet": {"class": "BLOCKED", "notes": "ATRPositionSizing, SmashDay, TTMSqueeze, IVRank, gcUserStudies_*, reclaims, ColorThemeSwitcher: no source. Replay-only via executor if they emit tradeable subgraphs."}
+    "BinaryOnlySet": {"class": "BLOCKED", "notes": "No source. Full list: STUDIES.md section 7 (17 bases incl. BBDynamicSR, CumulativeDeltaDivDetector, DATR, FVG_and_News, IVRVRatio/IVRankPercentile, LinearRegression, MomoVolatility, RankCorrelationIndex, RiskRewardTool, VIXSmartLevels). Replay-only via executor if they emit tradeable subgraphs."}
   }
 }

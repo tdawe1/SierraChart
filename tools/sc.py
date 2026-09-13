@@ -275,8 +275,8 @@ def cmd_check(args):
                 f"{preset.name}: embedded webhook URL — chartbooks store input "
                 "strings in plaintext; keep this file private or it leaks the secret"
             )
-    drift = check_vendor_drift()
-
+    for d in check_vendor_drift():
+        warnings.append(d)
     for e in errors:
         print(f"ERROR: {e}")
     for w in warnings:
@@ -394,8 +394,6 @@ def resolve_native(name):
 
 def cmd_install(args):
     dest = Path(args.to) if args.to else acs_source()
-    if args.to:
-        dest.mkdir(parents=True, exist_ok=True)
     if args.all:
         files = native_sources()
     else:
@@ -425,6 +423,8 @@ def cmd_install(args):
         for repo_path, _ in copies:
             print(f"  {rel(repo_path)}")
         return 0
+    if args.to:
+        dest.mkdir(parents=True, exist_ok=True)
     if not dest.is_dir():
         print(f"error: build folder not found: {dest} "
               "(set SC_ACS_SOURCE or use --to)", file=sys.stderr)
@@ -745,7 +745,7 @@ def js_escape(s):
 
 def do_catalog_add(src, desc, status):
     """Append STUDIES.md row(s) + index.html card for a native source."""
-    if status.split()[0] not in STATUS_WORDS:
+    if not status.split() or status.split()[0] not in STATUS_WORDS:
         print(f"error: status {status!r} must start with one of "
               f"{sorted(STATUS_WORDS)}", file=sys.stderr)
         return 2
@@ -769,12 +769,18 @@ def do_catalog_add(src, desc, status):
         return 2
     section, group = CATALOG_SECTIONS[key]
     studies_text = read_text(STUDIES_MD) or ""
-    if src.name in studies_text:
-        print(f"error: {src.name} is already registered in STUDIES.md",
-              file=sys.stderr)
-        return 1
     exports = study_exports(text)
     graphs = GRAPHNAME_RE.findall(text)
+    row_without_card = False
+    if src.name in studies_text:
+        probe = f"{src.name} — {graphs[0]}" if graphs else src.name
+        if js_escape(probe) in (read_text(ROOT / "studies" / "index.html") or ""):
+            print(f"error: {src.name} is already registered in STUDIES.md",
+                  file=sys.stderr)
+            return 1
+        # A crash between the two file writes left a row without a card:
+        # fall through and write just the missing card (stays retryable).
+        row_without_card = True
     names = exports or ["—"]
     rows = []
     for i, exp in enumerate(names):
@@ -792,8 +798,9 @@ def do_catalog_add(src, desc, status):
     if last is None:
         print(f"error: no table rows under {section} in STUDIES.md", file=sys.stderr)
         return 1
-    lines[last + 1:last + 1] = rows
-    STUDIES_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Validate the index.html slot BEFORE mutating either file: a failed
+    # add must leave no row-without-card behind. A crash between the two
+    # writes below is repaired on retry (row detected, card rewritten).
     index_path = ROOT / "studies" / "index.html"
     index_text = read_text(index_path) or ""
     marker = '{g:"' + group + '"'
@@ -806,6 +813,9 @@ def do_catalog_add(src, desc, status):
     if end < 0:
         print("error: malformed DATA group in studies/index.html", file=sys.stderr)
         return 1
+    if not row_without_card:
+        lines[last + 1:last + 1] = rows
+        STUDIES_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
     title = f"{src.name} — {graphs[0]}" if graphs else src.name
     scsfs = ", ".join(f"scsf_{e}" for e in exports) if exports else "—"
     card = (f',\n["{js_escape(title)}","{js_escape(scsfs)}",'
@@ -831,8 +841,7 @@ def cmd_new(args):
     if not VALID_IDENT.match(args.study):
         print(f"error: study name '{args.study}' is not a C identifier", file=sys.stderr)
         return 2
-    dest = (ROOT / args.dir / args.file).resolve() if os.path.isabs(args.dir) \
-        else (ROOT / args.dir / args.file)
+    dest = (ROOT / args.dir / args.file).resolve()
     try:
         dest.relative_to(ROOT)
     except ValueError:
@@ -883,8 +892,11 @@ def validate_slot_csv(path):
                 continue
             t, v = parts
             if not TIME_RE.match(t):
-                # allow HHMM numeric fallback (study parses it too)
-                if not (t.isdigit() and len(t) == 4 and TIME_RE.match(t[:2] + ":" + t[2:])):
+                # allow HHMM numeric fallback (study parses it too),
+                # normalized so 0900 and 09:00 collide as duplicates
+                if t.isdigit() and len(t) == 4 and TIME_RE.match(t[:2] + ":" + t[2:]):
+                    t = t[:2] + ":" + t[2:]
+                else:
                     errors.append(f"{path}:{i}: bad time {t!r}")
                     continue
             try:
@@ -1554,7 +1566,7 @@ def cmd_maintain(args):
 
     readme = read_text(TOOLS / "README.md") or ""
     for cmd in cli_commands():
-        if cmd not in readme:
+        if f"`{cmd}`" not in readme:
             errors.append(
                 f"tools/README.md does not mention `{cmd}` — docs drifted "
                 "from the CLI")

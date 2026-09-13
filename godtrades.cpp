@@ -1065,7 +1065,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         if (IsVolImbGreen(sc, i)) {
             //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
             Subgraph_VolImbUp[i] = low - ((Input_UpOffset.GetInt()) * sc.TickSize);
-            Subgraph_VolImbOriginCandle[i] = sc.CurrentIndex;
+            Subgraph_VolImbOriginCandle[i] = i;
             Subgraph_VolImbDirection[i] = 1;
             Subgraph_VolImbPrice[i] = open;
 
@@ -1090,7 +1090,7 @@ SCSFExport scsf_GodTrades(SCStudyInterfaceRef sc) {
         if (IsVolImbRed(sc, i)) {
             //sc.AddLineUntilFutureIntersection(i, i, open, RGB(255, 255, 255), 2, LINESTYLE_SOLID, false, false, "");
             Subgraph_VolImbDown[i] = high + ((Input_UpOffset.GetInt()) * sc.TickSize);
-            Subgraph_VolImbOriginCandle[i] = sc.CurrentIndex;
+            Subgraph_VolImbOriginCandle[i] = i;
             Subgraph_VolImbDirection[i] = -1;
             Subgraph_VolImbPrice[i] = open;
 
